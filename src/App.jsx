@@ -425,7 +425,7 @@ const NavButton = ({ active, onClick, icon, label }) => (
 
 
 // --- KPI COMPONENT ---
-const KPIDashboard = ({ entries, type, selectedDate }) => {
+const KPIDashboard = ({ entries, type, selectedDate, infant }) => {
     const [now, setNow] = useState(new Date());
 
     useEffect(() => {
@@ -530,6 +530,41 @@ const KPIDashboard = ({ entries, type, selectedDate }) => {
                         {totalPumpVolume} ml today
                     </div>
                 )}
+            </div>
+        );
+    }
+
+    if (type === 'age' && infant && infant.dob) {
+        const dob = getSafeDate(infant.dob);
+        const ageInDays = differenceInDays(now, dob);
+        const ageInMonths = Math.floor(ageInDays / 30);
+        const ageInYears = Math.floor(ageInDays / 365);
+        
+        let ageDisplay = '';
+        if (ageInDays < 30) {
+            // Less than 1 month - show days
+            ageDisplay = `${ageInDays} day${ageInDays !== 1 ? 's' : ''}`;
+        } else if (ageInDays < 365) {
+            // Less than 1 year - show months and days
+            const remainingDays = ageInDays - (ageInMonths * 30);
+            ageDisplay = `${ageInMonths}m ${remainingDays}d`;
+        } else {
+            // 1 year or more - show years
+            const monthsRemainder = Math.floor((ageInDays - (ageInYears * 365)) / 30);
+            if (monthsRemainder > 0) {
+                ageDisplay = `${ageInYears}y ${monthsRemainder}m`;
+            } else {
+                ageDisplay = `${ageInYears} year${ageInYears !== 1 ? 's' : ''}`;
+            }
+        }
+
+        return (
+            <div className={`flex flex-col items-center justify-center p-2 rounded-lg border bg-slate-50 border-slate-200 text-slate-800 w-full`}>
+                <div className="flex items-center gap-1 mb-1">
+                    <Baby size={14} className="text-slate-600" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Baby Age</span>
+                </div>
+                <span className="font-bold text-sm">{ageDisplay}</span>
             </div>
         );
     }
@@ -654,42 +689,12 @@ const TrackingTab = ({ householdId, infant }) => {
                 </div>
             )}
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-3">
-                <div className="flex items-center justify-between mb-3">
-                    <button 
-                        onClick={() => changeDate(-1)}
-                        className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-                        aria-label="Previous day"
-                    >
-                        <ChevronLeft size={20} className="text-slate-600" />
-                    </button>
-                    <div className="flex flex-col items-center">
-                        <input 
-                            type="date" 
-                            value={format(selectedDate, 'yyyy-MM-dd')}
-                            onChange={(e) => setSelectedDate(new Date(e.target.value + 'T00:00:00'))}
-                            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
-                        />
-                        {isToday && <span className="text-xs text-pink-600 font-semibold mt-1">Today</span>}
-                    </div>
-                    <button 
-                        onClick={() => changeDate(1)}
-                        disabled={isToday}
-                        className={`p-2 rounded-full transition-colors ${
-                            isToday ? 'text-slate-300 cursor-not-allowed' : 'hover:bg-slate-100 text-slate-600'
-                        }`}
-                        aria-label="Next day"
-                    >
-                        <ChevronRight size={20} />
-                    </button>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 <KPIDashboard entries={entries} type="pee" selectedDate={selectedDate} />
                 <KPIDashboard entries={entries} type="poop" selectedDate={selectedDate} />
                 <KPIDashboard entries={entries} type="feed" selectedDate={selectedDate} />
                 <KPIDashboard entries={entries} type="pump" selectedDate={selectedDate} />
+                <KPIDashboard entries={entries} type="age" selectedDate={selectedDate} infant={infant} />
             </div>
 
             <div className="grid grid-cols-3 gap-2 md:grid-cols-6">
@@ -733,7 +738,34 @@ const TrackingTab = ({ householdId, infant }) => {
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
                     <h2 className="font-semibold text-slate-700">{isToday ? "Today's Activity" : "Activity"}</h2>
-                    <span className="text-xs text-slate-400">{format(selectedDate, 'MMM d, yyyy')}</span>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => changeDate(-1)}
+                            className="p-1 hover:bg-slate-200 rounded-full transition-colors"
+                            aria-label="Previous day"
+                        >
+                            <ChevronLeft size={16} className="text-slate-600" />
+                        </button>
+                        <div className="flex flex-col items-center">
+                            <input 
+                                type="date" 
+                                value={format(selectedDate, 'yyyy-MM-dd')}
+                                onChange={(e) => setSelectedDate(new Date(e.target.value + 'T00:00:00'))}
+                                className="px-2 py-1 bg-white border border-slate-200 rounded text-xs font-medium focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                            />
+                            {isToday && <span className="text-[10px] text-pink-600 font-semibold">Today</span>}
+                        </div>
+                        <button 
+                            onClick={() => changeDate(1)}
+                            disabled={isToday}
+                            className={`p-1 rounded-full transition-colors ${
+                                isToday ? 'text-slate-300 cursor-not-allowed' : 'hover:bg-slate-200 text-slate-600'
+                            }`}
+                            aria-label="Next day"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
                 </div>
                 <div className="divide-y divide-slate-100">
                     {selectedDateEntries.length === 0 ? (
@@ -1555,22 +1587,23 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
         return acc;
     }, [summaryData]);
 
-    const renderLines = () => {
+    const renderChartElements = () => {
         const renderList = [];
         const activeInfants = isCompare ? infants : (infants.find(i => i.id === currentInfantId) ? [infants.find(i => i.id === currentInfantId)] : []);
         
         activeInfants.forEach((infant, index) => {
             const prefix = isCompare ? `${infant.id}_` : '';
-            const dash = index === 0 ? "" : (index === 1 ? "5 5" : "2 2");
             const suffix = isCompare ? ` (${infant.name})` : '';
 
-            if(metrics.pee) renderList.push(<Line key={`${infant.id}-pee`} type="monotone" dataKey={`${prefix}pee`} stroke="#eab308" strokeDasharray={dash} strokeWidth={2} dot={false} name={`Pee${suffix}`} />);
-            if(metrics.poop) renderList.push(<Line key={`${infant.id}-poop`} type="monotone" dataKey={`${prefix}poop`} stroke="#ea580c" strokeDasharray={dash} strokeWidth={2} dot={false} name={`Poop${suffix}`} />);
-            if(metrics.bottle) renderList.push(<Line key={`${infant.id}-bottle`} type="monotone" dataKey={`${prefix}bottle`} stroke="#2563eb" strokeDasharray={dash} strokeWidth={2} dot={false} name={`Bottle${suffix}`} />);
-            if(metrics.breast) renderList.push(<Line key={`${infant.id}-breast`} type="monotone" dataKey={`${prefix}breast`} stroke="#ec4899" strokeDasharray={dash} strokeWidth={2} dot={false} name={`Breast${suffix}`} />);
-            if(metrics.weight) renderList.push(<Line key={`${infant.id}-weight`} type="monotone" dataKey={`${prefix}weight`} stroke="#059669" strokeDasharray={dash} strokeWidth={2} dot={false} name={`Weight${suffix}`} />);
+            // Render bars for metrics
+            if(metrics.pee) renderList.push(<Bar key={`${infant.id}-pee`} dataKey={`${prefix}pee`} fill="#eab308" name={`Pee${suffix}`} />);
+            if(metrics.poop) renderList.push(<Bar key={`${infant.id}-poop`} dataKey={`${prefix}poop`} fill="#ea580c" name={`Poop${suffix}`} />);
+            if(metrics.bottle) renderList.push(<Bar key={`${infant.id}-bottle`} dataKey={`${prefix}bottle`} fill="#2563eb" name={`Bottle (ml)${suffix}`} />);
+            if(metrics.breast) renderList.push(<Bar key={`${infant.id}-breast`} dataKey={`${prefix}breast`} fill="#ec4899" name={`Breast (min)${suffix}`} />);
+            if(metrics.weight) renderList.push(<Bar key={`${infant.id}-weight`} dataKey={`${prefix}weight`} fill="#059669" name={`Weight (kg)${suffix}`} />);
             
-            renderList.push(<Line yAxisId="right" key={`${infant.id}-age`} type="monotone" dataKey={`${infant.id}_age`} stroke="#94a3b8" strokeDasharray="4 1" strokeWidth={1} dot={false} name={`Age (days)${suffix}`} />);
+            // Render age as a line
+            renderList.push(<Line yAxisId="right" key={`${infant.id}-age`} type="monotone" dataKey={`${infant.id}_age`} stroke="#94a3b8" strokeDasharray="4 1" strokeWidth={2} dot={false} name={`Age (days)${suffix}`} />);
         });
         
         return renderList;
@@ -1633,7 +1666,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
                         <YAxis yAxisId="right" orientation="right" label={{ value: 'Age (Days)', angle: 90, position: 'insideRight' }} />
                         <Tooltip labelFormatter={t => format(parse(t, 'yyyy-MM-dd', new Date()), 'MMM d, yyyy')} />
                         <Legend />
-                        {renderLines()}
+                        {renderChartElements()}
                     </ComposedChart>
                 </ResponsiveContainer>
             </div>
