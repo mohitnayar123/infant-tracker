@@ -1566,10 +1566,8 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
                     const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
                     dailyStats[d] = { date: d }; 
                 }
-            } else if (period === 'today') {
-                const todayStr = format(new Date(), 'yyyy-MM-dd');
-                dailyStats[todayStr] = { date: todayStr };
             }
+            // For 'today' and 'all', don't pre-fill - let entries populate the data
 
             filteredEntries.forEach(d => {
                 if (!isCompare) {
@@ -1635,16 +1633,26 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
         const renderList = [];
         const activeInfants = isCompare ? infants : (infants.find(i => i.id === currentInfantId) ? [infants.find(i => i.id === currentInfantId)] : []);
         
+        // Color variations: first child gets lighter shade, second gets darker
+        const colorSets = {
+            pee: ['#fde047', '#eab308'],      // yellow-300, yellow-500
+            poop: ['#fb923c', '#ea580c'],     // orange-400, orange-600
+            bottle: ['#60a5fa', '#2563eb'],   // blue-400, blue-600
+            breast: ['#f472b6', '#ec4899'],   // pink-400, pink-500
+            weight: ['#34d399', '#059669']    // emerald-400, emerald-600
+        };
+        
         activeInfants.forEach((infant, index) => {
             const prefix = isCompare ? `${infant.id}_` : '';
             const suffix = isCompare ? ` (${infant.name})` : '';
+            const colorIndex = index % 2; // Alternate between 0 and 1
 
-            // Render bars for metrics
-            if(metrics.pee) renderList.push(<Bar key={`${infant.id}-pee`} dataKey={`${prefix}pee`} fill="#eab308" name={`Pee${suffix}`} />);
-            if(metrics.poop) renderList.push(<Bar key={`${infant.id}-poop`} dataKey={`${prefix}poop`} fill="#ea580c" name={`Poop${suffix}`} />);
-            if(metrics.bottle) renderList.push(<Bar key={`${infant.id}-bottle`} dataKey={`${prefix}bottle`} fill="#2563eb" name={`Bottle (ml)${suffix}`} />);
-            if(metrics.breast) renderList.push(<Bar key={`${infant.id}-breast`} dataKey={`${prefix}breast`} fill="#ec4899" name={`Breast (min)${suffix}`} />);
-            if(metrics.weight) renderList.push(<Bar key={`${infant.id}-weight`} dataKey={`${prefix}weight`} fill="#059669" name={`Weight (kg)${suffix}`} />);
+            // Render bars for metrics with color variation
+            if(metrics.pee) renderList.push(<Bar key={`${infant.id}-pee`} dataKey={`${prefix}pee`} fill={colorSets.pee[colorIndex]} name={`Pee${suffix}`} />);
+            if(metrics.poop) renderList.push(<Bar key={`${infant.id}-poop`} dataKey={`${prefix}poop`} fill={colorSets.poop[colorIndex]} name={`Poop${suffix}`} />);
+            if(metrics.bottle) renderList.push(<Bar key={`${infant.id}-bottle`} dataKey={`${prefix}bottle`} fill={colorSets.bottle[colorIndex]} name={`Bottle (ml)${suffix}`} />);
+            if(metrics.breast) renderList.push(<Bar key={`${infant.id}-breast`} dataKey={`${prefix}breast`} fill={colorSets.breast[colorIndex]} name={`Breast (min)${suffix}`} />);
+            if(metrics.weight) renderList.push(<Bar key={`${infant.id}-weight`} dataKey={`${prefix}weight`} fill={colorSets.weight[colorIndex]} name={`Weight (kg)${suffix}`} />);
             
             // Render age as a line
             renderList.push(<Line yAxisId="right" key={`${infant.id}-age`} type="monotone" dataKey={`${infant.id}_age`} stroke="#94a3b8" strokeDasharray="4 1" strokeWidth={2} dot={false} name={`Age (days)${suffix}`} />);
@@ -1916,27 +1924,31 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
 
                 const infant = infants.find(i => i.id === data.infantId);
                 const infantName = data.infantId === 'mom' ? 'Mom' : (infant?.name || 'Unknown');
+                const userEmail = data.userEmail || 'Unknown';
                 
                 let action = '';
                 switch(data.type) {
-                    case 'pee': action = 'logged a pee'; break;
-                    case 'poop': action = 'logged a poop'; break;
+                    case 'pee': action = `logged a pee${infantName !== 'Unknown' ? ' for ' + infantName : ''}`; break;
+                    case 'poop': action = `logged a poop${infantName !== 'Unknown' ? ' for ' + infantName : ''}`; break;
                     case 'bottle': 
                         const bottleVol = (data.details.breastMilk || 0) + (data.details.formula || 0);
-                        action = `logged bottle feeding (${bottleVol}ml)`;
+                        action = `logged bottle feeding (${bottleVol}ml)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
                         break;
                     case 'breast':
                         const breastDur = (data.details.leftTime || 0) + (data.details.rightTime || 0);
-                        action = `logged breastfeeding (${breastDur}min)`;
+                        action = `logged breastfeeding (${breastDur}min)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
                         break;
                     case 'pump':
-                        action = `logged pumping (${data.details.totalVol || 0}ml)`;
+                        action = 'logged pumping (${data.details.totalVol || 0}ml)';
                         break;
                     case 'weight':
-                        action = `logged weight (${data.details.value}kg)`;
+                        action = `logged weight (${data.details.value}kg)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
                         break;
                     case 'height':
-                        action = `logged height (${data.details.value}cm)`;
+                        action = `logged height (${data.details.value}cm)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
+                        break;
+                    case 'export':
+                        action = `exported ${data.details.exportType} (${data.details.period})`;
                         break;
                     default: action = `logged ${data.type}`;
                 }
@@ -1944,7 +1956,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
                 return {
                     id: doc.id,
                     timestamp,
-                    infantName,
+                    userEmail,
                     action,
                     type: data.type
                 };
@@ -2368,7 +2380,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <span className="font-semibold text-slate-700 text-sm">
-                                                            {log.infantName}
+                                                            {log.userEmail}
                                                         </span>
                                                         <span className="text-slate-600 text-sm">
                                                             {log.action}
@@ -2385,6 +2397,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
                                                     log.type === 'breast' ? 'bg-pink-500' :
                                                     log.type === 'pump' ? 'bg-purple-600' :
                                                     log.type === 'weight' ? 'bg-emerald-600' :
+                                                    log.type === 'export' ? 'bg-teal-500' :
                                                     'bg-slate-400'
                                                 }`} />
                                             </div>
