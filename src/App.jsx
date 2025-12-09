@@ -661,6 +661,8 @@ const TrackingTab = ({ householdId, infant }) => {
                 infantId: targetInfantId,
                 type,
                 timestamp: Timestamp.fromDate(entryDate),
+                userId: auth.currentUser?.uid,
+                userEmail: auth.currentUser?.email,
                 details: getDefaultDetails(type)
             };
             console.log('[QuickAdd] Adding entry:', { type, infantId: targetInfantId, date: format(entryDate, 'yyyy-MM-dd HH:mm') });
@@ -946,6 +948,8 @@ const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantI
             infantId: targetInfantId,
             type,
             timestamp,
+            userId: auth.currentUser?.uid,
+            userEmail: auth.currentUser?.email,
             details
         };
 
@@ -1225,12 +1229,16 @@ const HistoryTab = ({ householdId, infant }) => {
             
             if (changes.pee === true) {
                 promises.push(addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), { 
-                    householdId, type: 'pee', timestamp, infantId: infant.id, details: {} 
+                    householdId, type: 'pee', timestamp, infantId: infant.id, 
+                    userId: auth.currentUser?.uid, userEmail: auth.currentUser?.email,
+                    details: {} 
                 }));
             }
             if (changes.poop === true) {
                 promises.push(addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), { 
-                    householdId, type: 'poop', timestamp, infantId: infant.id, details: { color: 'Yellow' } 
+                    householdId, type: 'poop', timestamp, infantId: infant.id, 
+                    userId: auth.currentUser?.uid, userEmail: auth.currentUser?.email,
+                    details: { color: 'Yellow' } 
                 }));
             }
             
@@ -1239,6 +1247,7 @@ const HistoryTab = ({ householdId, infant }) => {
                      householdId, type: 'bottle', 
                      timestamp, 
                      infantId: infant.id, 
+                     userId: auth.currentUser?.uid, userEmail: auth.currentUser?.email,
                      details: { formula: parseFloat(changes.formula), breastMilk: 0 } 
                  }));
             }
@@ -1248,6 +1257,7 @@ const HistoryTab = ({ householdId, infant }) => {
                      householdId, type: 'breast', 
                      timestamp, 
                      infantId: infant.id, 
+                     userId: auth.currentUser?.uid, userEmail: auth.currentUser?.email,
                      details: { leftTime: parseFloat(changes.breast), rightTime: 0 } 
                  }));
             }
@@ -1537,6 +1547,8 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
         
         if (period === 'all') {
             startDate = new Date(0); 
+        } else if (period === 'today') {
+            startDate = startOfDay(new Date());
         } else {
             startDate = startOfDay(subDays(new Date(), period));
         }
