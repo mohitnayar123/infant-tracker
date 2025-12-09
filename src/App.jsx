@@ -2,7 +2,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, 
+    getAuth, 
+    initializeAuth,
+    browserLocalPersistence,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
@@ -83,7 +85,20 @@ import { format, startOfDay, endOfDay, subDays, isSameDay, addMinutes, parse, is
 // --- Firebase Initialization ---
 const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+let auth;
+
+if (typeof window !== 'undefined') {
+    try {
+        // Use local persistence so Firebase Auth doesn't rely on sessionStorage (fixes iOS Safari private mode)
+        auth = initializeAuth(app, {
+            persistence: browserLocalPersistence,
+        });
+    } catch (error) {
+        auth = getAuth(app);
+    }
+} else {
+    auth = getAuth(app);
+}
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
@@ -119,15 +134,12 @@ const LoginScreen = () => {
 
     try {
         if (isSignUp) {
-            console.log('[Auth] Starting sign up:', email);
             if (!isStrongPassword(password)) {
                 throw new Error("Password must be 6+ chars with letters & numbers.");
             }
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            console.log('[Auth] User created successfully:', userCredential.user.uid);
             
             // Create Default Infant for new user
-            console.log('[Auth] Creating default infant for new user');
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'infants'), {
                 householdId: userCredential.user.uid,
                 name: 'Baby 1',
@@ -138,12 +150,8 @@ const LoginScreen = () => {
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', userCredential.user.uid), {
                 activeHouseholdId: userCredential.user.uid
             });
-            console.log('[Auth] Sign up completed successfully');
-
         } else {
-            console.log('[Auth] Starting sign in:', email);
             await signInWithEmailAndPassword(auth, email, password);
-            console.log('[Auth] Sign in successful');
         }
     } catch (err) {
         console.error('[Auth] Authentication error:', { isSignUp, email, code: err.code, message: err.message });
@@ -162,17 +170,14 @@ const LoginScreen = () => {
       setLoading(true);
       setError('');
       try {
-          console.log('[Auth] Starting Google sign in');
           const provider = new GoogleAuthProvider();
           const result = await signInWithPopup(auth, provider);
           const user = result.user;
-          console.log('[Auth] Google sign in successful:', user.email);
 
           const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', user.uid);
           const settingsSnap = await getDoc(settingsRef);
           
           if (!settingsSnap.exists()) {
-              console.log('[Auth] New Google user, creating default data');
               await setDoc(settingsRef, { activeHouseholdId: user.uid });
               const q = query(
                   collection(db, 'artifacts', appId, 'public', 'data', 'infants'),
@@ -180,7 +185,6 @@ const LoginScreen = () => {
               );
               const snapshot = await getDocs(q);
               if (snapshot.empty) {
-                  console.log('[Auth] Creating default infant for Google user');
                   await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'infants'), {
                       householdId: user.uid,
                       name: 'Baby 1',
@@ -201,9 +205,7 @@ const LoginScreen = () => {
           return;
       }
       try {
-          console.log('[Auth] Sending password reset email to:', email);
           await sendPasswordResetEmail(auth, email);
-          console.log('[Auth] Password reset email sent successfully');
           setResetSent(true);
           setError(""); 
       } catch (err) {
@@ -307,24 +309,38 @@ const LoginScreen = () => {
 
 // 2. Main App Shell
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [householdId, setHouseholdId] = useState(null);
+    const [user, setUser] = useState(null);
+    const [householdId, setHouseholdId] = useState(null);
+    const [userSettings, setUserSettings] = useState(null);
   const [currentTab, setCurrentTab] = useState('tracking');
   const [infants, setInfants] = useState([]);
   const [selectedInfant, setSelectedInfant] = useState(null);
   
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        console.log('[Auth] User signed in:', { uid: currentUser.uid, email: currentUser.email });
-      } else {
-        console.log('[Auth] User signed out');
-      }
+            if (currentUser) {
+                /* no-op: keep auth state quiet in production */
+            }
       setUser(currentUser);
-      if (!currentUser) setHouseholdId(null);
+            if (!currentUser) {
+                setHouseholdId(null);
+                setUserSettings(null);
+            }
     });
     return () => unsubscribe();
   }, []);
+
+    useEffect(() => {
+        if (!user) return;
+        const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_profiles', user.uid);
+        setDoc(profileRef, {
+            email: user.email || '',
+            displayName: user.displayName || '',
+            lastActive: serverTimestamp()
+        }, { merge: true }).catch((error) => {
+            console.error('[Profile] Failed to sync profile:', error);
+        });
+    }, [user]);
 
   // Sync Household ID
   useEffect(() => {
@@ -332,12 +348,14 @@ export default function App() {
       const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', user.uid);
       const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
           if (docSnap.exists()) {
-              const householdId = docSnap.data().activeHouseholdId || user.uid;
-              console.log('[Household] Household ID loaded:', householdId);
+              const data = docSnap.data();
+              const householdId = data.activeHouseholdId || user.uid;
+              setUserSettings(data);
               setHouseholdId(householdId);
           } else {
-              console.log('[Household] Creating new household for user:', user.uid);
-              setDoc(settingsRef, { activeHouseholdId: user.uid });
+              const defaultSettings = { activeHouseholdId: user.uid };
+              setDoc(settingsRef, defaultSettings);
+              setUserSettings(defaultSettings);
               setHouseholdId(user.uid);
           }
       }, (error) => {
@@ -357,10 +375,8 @@ export default function App() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const loadedInfants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      console.log('[Infants] Loaded infants:', loadedInfants.length, loadedInfants.map(i => i.name));
       setInfants(loadedInfants);
       if (loadedInfants.length > 0 && !selectedInfant) {
-        console.log('[Infants] Auto-selecting first infant:', loadedInfants[0].name);
         setSelectedInfant(loadedInfants[0]);
       }
     }, (error) => {
@@ -419,7 +435,7 @@ export default function App() {
         {currentTab === 'history' && selectedInfant && <HistoryTab householdId={householdId} infant={selectedInfant} />}
         {currentTab === 'pumping' && <PumpingTab householdId={householdId} />}
         {currentTab === 'summary' && <SummaryTab householdId={householdId} infants={infants} currentInfantId={selectedInfant?.id} appId={appId} />}
-        {currentTab === 'settings' && <SettingsTab user={user} householdId={householdId} infants={infants} appId={appId} onTabChange={setCurrentTab} />}
+        {currentTab === 'settings' && <SettingsTab user={user} householdId={householdId} infants={infants} appId={appId} onTabChange={setCurrentTab} userSettings={userSettings} />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around p-2 md:hidden z-20 overflow-x-auto">
@@ -692,9 +708,7 @@ const TrackingTab = ({ householdId, infant }) => {
                 userEmail: auth.currentUser?.email,
                 details: getDefaultDetails(type)
             };
-            console.log('[QuickAdd] Adding entry:', { type, infantId: targetInfantId, date: format(entryDate, 'yyyy-MM-dd HH:mm') });
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
-            console.log('[QuickAdd] Entry added successfully:', type);
             showToast(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
         } catch (error) {
             console.error('[QuickAdd] Failed to add entry:', { type, error: error.message, stack: error.stack });
@@ -1021,13 +1035,9 @@ const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantI
 
         try {
             if (existingEntry) {
-                console.log('[EntryModal] Updating entry:', { id: existingEntry.id, type, details });
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', existingEntry.id), entryData);
-                console.log('[EntryModal] Entry updated successfully');
             } else {
-                console.log('[EntryModal] Creating new entry:', { type, details });
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entryData);
-                console.log('[EntryModal] Entry created successfully');
             }
             onClose();
         } catch (e) {
@@ -1040,9 +1050,7 @@ const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantI
         if (!existingEntry) return;
         if (confirm('Delete this entry?')) {
             try {
-                console.log('[EntryModal] Deleting entry:', { id: existingEntry.id, type: existingEntry.type });
                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', existingEntry.id));
-                console.log('[EntryModal] Entry deleted successfully');
                 onClose();
             } catch (error) {
                 console.error('[EntryModal] Error deleting entry:', { id: existingEntry.id, error: error.message });
@@ -1801,7 +1809,6 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
     const activeInfants = isCompare ? infants : (infants.find(i => i.id === currentInfantId) ? [infants.find(i => i.id === currentInfantId)] : []);
 
     const downloadSummaryCSV = async () => {
-        console.log('[Summary] Exporting summary as CSV');
         
         // Build CSV headers
         let headers = ['Date'];
@@ -1855,7 +1862,6 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                     metrics: activeMetrics.join(', ')
                 }
             });
-            console.log('[Summary] Export logged to activity');
         } catch (error) {
             console.error('[Summary] Failed to log export:', error);
         }
@@ -1869,7 +1875,6 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        console.log('[Summary] CSV export completed');
     };
 
     // Empty State Check
@@ -2022,7 +2027,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
 
 
 // --- TAB 4: SETTINGS (Added Join Household UI) ---
-const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange }) => {
+const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange, userSettings }) => {
     // ... [Previous logic]
     const [newInfantName, setNewInfantName] = useState('');
     const [dob, setDob] = useState('');
@@ -2030,6 +2035,11 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
     const [editingId, setEditingId] = useState(null);
     const [editName, setEditName] = useState('');
     const [editDob, setEditDob] = useState('');
+    const [members, setMembers] = useState([]);
+    const [membersLoading, setMembersLoading] = useState(false);
+    const [memberError, setMemberError] = useState('');
+    const [memberActionStatus, setMemberActionStatus] = useState('');
+    const isHouseholdOwner = user?.uid === householdId;
     
     // Join Household State
     const [partnerCode, setPartnerCode] = useState('');
@@ -2043,6 +2053,55 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
     const [activityLog, setActivityLog] = useState([]);
     const [showActivityLog, setShowActivityLog] = useState(false);
     const [activityPeriod, setActivityPeriod] = useState(7);
+
+    useEffect(() => {
+        if (!appId || !householdId || !isHouseholdOwner) {
+            setMembers([]);
+            setMembersLoading(false);
+            return;
+        }
+        setMembersLoading(true);
+        const membersQuery = query(
+            collection(db, 'artifacts', appId, 'public', 'data', 'user_settings'),
+            where('activeHouseholdId', '==', householdId)
+        );
+
+        const unsubscribe = onSnapshot(membersQuery, async (snapshot) => {
+            const docs = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+            try {
+                const enriched = await Promise.all(docs.map(async (member) => {
+                    try {
+                        const profileSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'user_profiles', member.id));
+                        return { ...member, profile: profileSnap.exists() ? profileSnap.data() : null };
+                    } catch (profileErr) {
+                        console.error('[Members] Failed to load profile:', profileErr);
+                        return { ...member, profile: null };
+                    }
+                }));
+                setMembers(enriched);
+                setMemberError('');
+            } catch (err) {
+                console.error('[Members] Failed to enrich members:', err);
+                setMemberError('Unable to load household members.');
+                setMembers([]);
+            } finally {
+                setMembersLoading(false);
+            }
+        }, (error) => {
+            console.error('[Members] Error loading household members:', error);
+            setMemberError('Unable to load household members.');
+            setMembers([]);
+            setMembersLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [appId, householdId, isHouseholdOwner]);
+
+    useEffect(() => {
+        if (!memberActionStatus) return;
+        const timer = setTimeout(() => setMemberActionStatus(''), 4000);
+        return () => clearTimeout(timer);
+    }, [memberActionStatus]);
 
     // Load activity log
     useEffect(() => {
@@ -2160,6 +2219,10 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
 
     const joinHousehold = async () => {
         if (!partnerCode) return;
+        if (userSettings?.blockedHouseholds && userSettings.blockedHouseholds[partnerCode]) {
+            setJoinStatus('The owner of this household has blocked your access.');
+            return;
+        }
         try {
             // Check if partner code (UID) has data
             const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'infants'), where('householdId', '==', partnerCode));
@@ -2179,6 +2242,25 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
         } catch (e) {
             console.error("Join failed", e);
             setJoinStatus('Failed to join.');
+        }
+    };
+
+    const handleMemberAccessChange = async (member, { block = false } = {}) => {
+        if (!isHouseholdOwner || !member || member.id === householdId) return;
+        const targetLabel = member.profile?.email || member.profile?.displayName || member.id;
+        const actionText = block ? 'remove and block' : 'remove';
+        if (!confirm(`Are you sure you want to ${actionText} ${targetLabel}?`)) return;
+        try {
+            const targetRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', member.id);
+            const updates = { activeHouseholdId: member.id };
+            if (block) {
+                updates[`blockedHouseholds.${householdId}`] = true;
+            }
+            await setDoc(targetRef, updates, { merge: true });
+            setMemberActionStatus(block ? 'Member removed and blocked.' : 'Member removed from household.');
+        } catch (error) {
+            console.error('[Members] Failed to update member access:', error);
+            setMemberActionStatus('Failed to update member access.');
         }
     };
 
@@ -2335,6 +2417,57 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
 
     return (
         <div className="space-y-6">
+            {isHouseholdOwner && (
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h3 className="font-bold text-lg mb-3 flex items-center gap-2"><Users size={20}/> Household Members</h3>
+                    {memberError && <p className="text-sm text-red-600 mb-3">{memberError}</p>}
+                    {membersLoading ? (
+                        <p className="text-sm text-slate-500">Loading household members...</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {members.length === 0 && (
+                                <p className="text-sm text-slate-500">No additional members have joined this household yet.</p>
+                            )}
+                            {members.map(member => (
+                                <div key={member.id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 bg-slate-50 rounded-lg">
+                                    <div>
+                                        <p className="font-semibold text-slate-700">
+                                            {member.profile?.displayName || member.profile?.email || 'Member'}
+                                            {member.id === householdId && <span className="text-xs text-pink-600 font-bold ml-2">(Owner)</span>}
+                                        </p>
+                                        <p className="text-xs text-slate-500">{member.profile?.email || 'Email unavailable'}</p>
+                                    </div>
+                                    <div className="flex flex-col gap-2 sm:items-end">
+                                        <div className="text-right text-xs text-slate-400">
+                                            UID: {(member.id || '').slice(0,6)}…
+                                        </div>
+                                        {member.id !== householdId && (
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => handleMemberAccessChange(member, { block: false })}
+                                                    className="px-3 py-1 rounded-lg text-xs font-semibold border border-slate-300 text-slate-600 hover:bg-white"
+                                                >
+                                                    Remove
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleMemberAccessChange(member, { block: true })}
+                                                    className="px-3 py-1 rounded-lg text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50"
+                                                >
+                                                    Block
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                            {memberActionStatus && (
+                                <p className="text-xs text-emerald-600 font-semibold mt-3">{memberActionStatus}</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Home size={20}/> Share Household</h3>
                 <p className="text-sm text-slate-500 mb-2">Share this code to let others join your tracker:</p>
@@ -2562,6 +2695,13 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
                         </div>
                     </>
                 )}
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                <h3 className="font-bold text-lg mb-2 text-slate-800">Privacy Policy</h3>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                    This app is provided as-is for household convenience only. By using it you acknowledge that entries, exports, and shared household data are stored in Firebase under your account and may be visible to anyone you share access with. Do not store information you are uncomfortable sharing, and use the tracker entirely at your own risk.
+                </p>
             </div>
 
             <button 
