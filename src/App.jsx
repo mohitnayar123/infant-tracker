@@ -425,7 +425,7 @@ const NavButton = ({ active, onClick, icon, label }) => (
 
 
 // --- KPI COMPONENT ---
-const KPIDashboard = ({ entries, type }) => {
+const KPIDashboard = ({ entries, type, selectedDate }) => {
     const [now, setNow] = useState(new Date());
 
     useEffect(() => {
@@ -447,6 +447,15 @@ const KPIDashboard = ({ entries, type }) => {
         if (diffHours < 24) return `${diffHours}h ${diffMins % 60}m ago`;
         return format(date, 'MMM d, HH:mm');
     }, [lastEntry, now]);
+
+    // Calculate totals for selected date
+    const selectedDateEntries = useMemo(() => {
+        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+        return entries.filter(e => {
+            const date = getSafeDate(e.timestamp);
+            return date && format(date, 'yyyy-MM-dd') === selectedDateStr;
+        });
+    }, [entries, selectedDate]);
 
     const iconMap = {
         pee: <Droplets size={16} className="text-yellow-600" />,
@@ -483,6 +492,11 @@ const KPIDashboard = ({ entries, type }) => {
             return `${diffHours}h ${diffMins % 60}m ago`;
         };
 
+        // Calculate total bottle volume for selected date
+        const totalBottleVolume = selectedDateEntries
+            .filter(e => e.type === 'bottle')
+            .reduce((sum, e) => sum + (e.details.breastMilk || 0) + (e.details.formula || 0), 0);
+
         return (
             <div className={`flex flex-col items-center justify-center p-2 rounded-lg border ${colorMap.bottle} w-full`}>
                 <div className="flex items-center gap-1 mb-1">
@@ -490,6 +504,32 @@ const KPIDashboard = ({ entries, type }) => {
                     <span className="text-xs font-bold uppercase tracking-wider">Last Feed</span>
                 </div>
                 <span className="font-bold text-sm">{feedTimeAgo()}</span>
+                {totalBottleVolume > 0 && (
+                    <div className="text-xs text-blue-600 font-semibold mt-1">
+                        {totalBottleVolume} ml today
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    if (type === 'pump') {
+        const totalPumpVolume = selectedDateEntries
+            .filter(e => e.type === 'pump')
+            .reduce((sum, e) => sum + (e.details.totalVol || 0), 0);
+
+        return (
+            <div className={`flex flex-col items-center justify-center p-2 rounded-lg border ${colorMap[type]} w-full`}>
+                <div className="flex items-center gap-1 mb-1">
+                    {iconMap[type]}
+                    <span className="text-xs font-bold uppercase tracking-wider">Last {type}</span>
+                </div>
+                <span className="font-bold text-sm">{timeAgo}</span>
+                {totalPumpVolume > 0 && (
+                    <div className="text-xs text-purple-600 font-semibold mt-1">
+                        {totalPumpVolume} ml today
+                    </div>
+                )}
             </div>
         );
     }
@@ -513,6 +553,7 @@ const TrackingTab = ({ householdId, infant }) => {
     const [modalType, setModalType] = useState(null); 
     const [editingEntry, setEditingEntry] = useState(null);
     const [toast, setToast] = useState({ show: false, message: '' });
+    const [selectedDate, setSelectedDate] = useState(new Date());
 
     useEffect(() => {
         const q = query(
@@ -547,11 +588,17 @@ const TrackingTab = ({ householdId, infant }) => {
         try {
             const targetInfantId = type === 'pump' ? 'mom' : infant.id;
             
+            // Use selected date for the entry
+            const entryDate = new Date(selectedDate);
+            entryDate.setHours(new Date().getHours());
+            entryDate.setMinutes(new Date().getMinutes());
+            entryDate.setSeconds(new Date().getSeconds());
+            
             const entry = {
                 householdId, 
                 infantId: targetInfantId,
                 type,
-                timestamp: Timestamp.fromDate(new Date()),
+                timestamp: Timestamp.fromDate(entryDate),
                 details: getDefaultDetails(type)
             };
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
@@ -580,13 +627,23 @@ const TrackingTab = ({ householdId, infant }) => {
         setModalOpen(true);
     };
 
-    const todaysEntries = useMemo(() => {
-        const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const selectedDateEntries = useMemo(() => {
+        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
         return entries.filter(e => {
             const date = getSafeDate(e.timestamp);
-            return date && format(date, 'yyyy-MM-dd') === todayStr;
+            return date && format(date, 'yyyy-MM-dd') === selectedDateStr;
         });
-    }, [entries]);
+    }, [entries, selectedDate]);
+
+    const isToday = useMemo(() => {
+        return isSameDay(selectedDate, new Date());
+    }, [selectedDate]);
+
+    const changeDate = (days) => {
+        const newDate = new Date(selectedDate);
+        newDate.setDate(newDate.getDate() + days);
+        setSelectedDate(newDate);
+    };
 
     return (
         <div className="space-y-6 relative">
@@ -597,11 +654,42 @@ const TrackingTab = ({ householdId, infant }) => {
                 </div>
             )}
 
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-3">
+                <div className="flex items-center justify-between mb-3">
+                    <button 
+                        onClick={() => changeDate(-1)}
+                        className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                        aria-label="Previous day"
+                    >
+                        <ChevronLeft size={20} className="text-slate-600" />
+                    </button>
+                    <div className="flex flex-col items-center">
+                        <input 
+                            type="date" 
+                            value={format(selectedDate, 'yyyy-MM-dd')}
+                            onChange={(e) => setSelectedDate(new Date(e.target.value + 'T00:00:00'))}
+                            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                        />
+                        {isToday && <span className="text-xs text-pink-600 font-semibold mt-1">Today</span>}
+                    </div>
+                    <button 
+                        onClick={() => changeDate(1)}
+                        disabled={isToday}
+                        className={`p-2 rounded-full transition-colors ${
+                            isToday ? 'text-slate-300 cursor-not-allowed' : 'hover:bg-slate-100 text-slate-600'
+                        }`}
+                        aria-label="Next day"
+                    >
+                        <ChevronRight size={20} />
+                    </button>
+                </div>
+            </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <KPIDashboard entries={entries} type="pee" />
-                <KPIDashboard entries={entries} type="poop" />
-                <KPIDashboard entries={entries} type="feed" />
-                <KPIDashboard entries={entries} type="pump" />
+                <KPIDashboard entries={entries} type="pee" selectedDate={selectedDate} />
+                <KPIDashboard entries={entries} type="poop" selectedDate={selectedDate} />
+                <KPIDashboard entries={entries} type="feed" selectedDate={selectedDate} />
+                <KPIDashboard entries={entries} type="pump" selectedDate={selectedDate} />
             </div>
 
             <div className="grid grid-cols-3 gap-2 md:grid-cols-6">
@@ -644,14 +732,14 @@ const TrackingTab = ({ householdId, infant }) => {
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                    <h2 className="font-semibold text-slate-700">Today's Activity</h2>
-                    <span className="text-xs text-slate-400">{format(new Date(), 'yyyy-MM-dd')}</span>
+                    <h2 className="font-semibold text-slate-700">{isToday ? "Today's Activity" : "Activity"}</h2>
+                    <span className="text-xs text-slate-400">{format(selectedDate, 'MMM d, yyyy')}</span>
                 </div>
                 <div className="divide-y divide-slate-100">
-                    {todaysEntries.length === 0 ? (
-                        <div className="p-8 text-center text-slate-400">No activity logged today</div>
+                    {selectedDateEntries.length === 0 ? (
+                        <div className="p-8 text-center text-slate-400">No activity logged for this date</div>
                     ) : (
-                        todaysEntries.map(entry => (
+                        selectedDateEntries.map(entry => (
                             <LogItem 
                                 key={entry.id} 
                                 entry={entry} 
@@ -671,6 +759,7 @@ const TrackingTab = ({ householdId, infant }) => {
                     householdId={householdId}
                     infantId={infant.id}
                     appId={appId}
+                    defaultDate={selectedDate}
                 />
             )}
         </div>
@@ -769,8 +858,8 @@ const LogItem = ({ entry, onClick }) => {
 
 
 // --- ENTRY MODAL (Unchanged) ---
-const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantId, appId }) => {
-    const initialDate = existingEntry ? getSafeDate(existingEntry.timestamp) : new Date();
+const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantId, appId, defaultDate }) => {
+    const initialDate = existingEntry ? getSafeDate(existingEntry.timestamp) : (defaultDate || new Date());
     const [date, setDate] = useState(format(initialDate, 'yyyy-MM-dd'));
     const [time, setTime] = useState(format(initialDate, 'HH:mm'));
     
