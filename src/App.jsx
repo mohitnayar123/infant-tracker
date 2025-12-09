@@ -378,13 +378,19 @@ export default function App() {
       }
   }, [infants]);
 
+    const handleInfantSelect = (infantId) => {
+        if (!infantId) return;
+        const matched = infants.find(i => i.id === infantId);
+        if (matched) setSelectedInfant(matched);
+    };
+
   if (!user || !householdId) {
     return <LoginScreen />;
   }
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-20 md:pb-0">
-      <header className="bg-white shadow-sm sticky top-0 z-10 px-4 py-3 flex items-center justify-between">
+      <header className="bg-white shadow-sm sticky top-0 z-10 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-pink-500 rounded-full flex items-center justify-center text-white">
                 <Baby size={18} />
@@ -392,21 +398,16 @@ export default function App() {
             <span className="font-bold text-lg hidden sm:block">Infant Tracker</span>
         </div>
 
-        <div className="flex items-center gap-2">
-            <select 
-                aria-label="Select infant to track"
-                className="bg-slate-100 border-none rounded-full px-4 py-1.5 text-sm font-medium focus:ring-2 focus:ring-pink-500"
-                value={selectedInfant?.id || ''}
-                onChange={(e) => setSelectedInfant(infants.find(i => i.id === e.target.value))}
-            >
-                {infants.map(infant => (
-                    <option key={infant.id} value={infant.id}>{infant.name}</option>
-                ))}
-            </select>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 w-full sm:w-auto">
+            <InfantTileSelector 
+                infants={infants}
+                selectedId={selectedInfant?.id}
+                onSelect={handleInfantSelect}
+            />
             <button 
                 aria-label="Open settings"
                 onClick={() => setCurrentTab('settings')}
-                className="p-2 text-slate-500 hover:bg-slate-100 rounded-full"
+                className="self-start sm:self-auto p-2 text-slate-500 hover:bg-slate-100 rounded-full"
             >
                 <SettingsIcon size={20} />
             </button>
@@ -447,6 +448,34 @@ const NavButton = ({ active, onClick, icon, label }) => (
         <span className="text-xs mt-1 font-medium">{label}</span>
     </button>
 );
+
+const InfantTileSelector = ({ infants, selectedId, onSelect }) => {
+    if (!infants || infants.length === 0) {
+        return (
+            <div className="px-4 py-2 rounded-xl bg-slate-100 text-slate-400 text-xs font-medium">
+                Add an infant in Settings
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex gap-2 overflow-x-auto w-full sm:w-auto -mx-1 px-1">
+            {infants.map((infant) => {
+                const isActive = infant.id === selectedId;
+                return (
+                    <button
+                        key={infant.id}
+                        type="button"
+                        onClick={() => onSelect(infant.id)}
+                        className={`min-w-[130px] rounded-xl border px-3 py-2 text-left transition shadow-sm ${isActive ? 'bg-pink-50 border-pink-200 text-pink-700' : 'bg-slate-50 border-transparent text-slate-600 hover:border-slate-200'}`}
+                    >
+                        <span className="block text-sm font-semibold truncate">{infant.name || 'Baby'}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+};
 
 
 // --- KPI COMPONENT ---
