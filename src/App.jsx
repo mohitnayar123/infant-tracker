@@ -1538,6 +1538,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
     const [isCompare, setIsCompare] = useState(false);
     const [summaryData, setSummaryData] = useState([]);
     const [metrics, setMetrics] = useState({ pee: true, poop: true, bottle: true, breast: true, weight: false });
+    const [prefsLoaded, setPrefsLoaded] = useState(false);
 
     // Load saved preferences from Firestore
     useEffect(() => {
@@ -1551,14 +1552,15 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                 if (prefs.metrics !== undefined) setMetrics(prefs.metrics);
                 if (prefs.isCompare !== undefined) setIsCompare(prefs.isCompare);
             }
+            setPrefsLoaded(true);
         });
         
         return () => unsubscribe();
     }, [appId]);
 
-    // Save preferences to Firestore when they change
+    // Save preferences to Firestore when they change (only after initial load)
     useEffect(() => {
-        if (!auth.currentUser?.uid || !appId) return;
+        if (!auth.currentUser?.uid || !appId || !prefsLoaded) return;
         
         const prefsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', auth.currentUser.uid);
         setDoc(prefsRef, {
@@ -1566,7 +1568,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         }, { merge: true }).catch(err => {
             console.error('[Summary] Failed to save preferences:', err);
         });
-    }, [period, metrics, isCompare, appId]);
+    }, [period, metrics, isCompare, appId, prefsLoaded]);
 
     useEffect(() => {
         const endDate = endOfDay(new Date());
