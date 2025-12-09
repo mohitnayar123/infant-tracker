@@ -119,12 +119,15 @@ const LoginScreen = () => {
 
     try {
         if (isSignUp) {
+            console.log('[Auth] Starting sign up:', email);
             if (!isStrongPassword(password)) {
                 throw new Error("Password must be 6+ chars with letters & numbers.");
             }
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            console.log('[Auth] User created successfully:', userCredential.user.uid);
             
             // Create Default Infant for new user
+            console.log('[Auth] Creating default infant for new user');
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'infants'), {
                 householdId: userCredential.user.uid,
                 name: 'Baby 1',
@@ -135,12 +138,15 @@ const LoginScreen = () => {
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', userCredential.user.uid), {
                 activeHouseholdId: userCredential.user.uid
             });
+            console.log('[Auth] Sign up completed successfully');
 
         } else {
+            console.log('[Auth] Starting sign in:', email);
             await signInWithEmailAndPassword(auth, email, password);
+            console.log('[Auth] Sign in successful');
         }
     } catch (err) {
-        console.error("Auth Error", err);
+        console.error('[Auth] Authentication error:', { isSignUp, email, code: err.code, message: err.message });
         let msg = "Authentication failed.";
         if (err.code === 'auth/invalid-email') msg = "Invalid email address.";
         if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') msg = "Invalid email or password.";
@@ -156,14 +162,17 @@ const LoginScreen = () => {
       setLoading(true);
       setError('');
       try {
+          console.log('[Auth] Starting Google sign in');
           const provider = new GoogleAuthProvider();
           const result = await signInWithPopup(auth, provider);
           const user = result.user;
+          console.log('[Auth] Google sign in successful:', user.email);
 
           const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', user.uid);
           const settingsSnap = await getDoc(settingsRef);
           
           if (!settingsSnap.exists()) {
+              console.log('[Auth] New Google user, creating default data');
               await setDoc(settingsRef, { activeHouseholdId: user.uid });
               const q = query(
                   collection(db, 'artifacts', appId, 'public', 'data', 'infants'),
@@ -171,6 +180,7 @@ const LoginScreen = () => {
               );
               const snapshot = await getDocs(q);
               if (snapshot.empty) {
+                  console.log('[Auth] Creating default infant for Google user');
                   await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'infants'), {
                       householdId: user.uid,
                       name: 'Baby 1',
@@ -179,7 +189,7 @@ const LoginScreen = () => {
               }
           }
       } catch (err) {
-          console.error("Google Auth Error", err);
+          console.error('[Auth] Google sign-in error:', { code: err.code, message: err.message });
           setError("Google sign-in failed. Please try again.");
       }
       setLoading(false);
@@ -191,10 +201,13 @@ const LoginScreen = () => {
           return;
       }
       try {
+          console.log('[Auth] Sending password reset email to:', email);
           await sendPasswordResetEmail(auth, email);
+          console.log('[Auth] Password reset email sent successfully');
           setResetSent(true);
           setError(""); 
       } catch (err) {
+          console.error('[Auth] Password reset error:', { email, code: err.code, message: err.message });
           setError("Failed to send reset email. Check the address.");
       }
   };
@@ -302,6 +315,11 @@ export default function App() {
   
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        console.log('[Auth] User signed in:', { uid: currentUser.uid, email: currentUser.email });
+      } else {
+        console.log('[Auth] User signed out');
+      }
       setUser(currentUser);
       if (!currentUser) setHouseholdId(null);
     });
@@ -314,11 +332,16 @@ export default function App() {
       const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', user.uid);
       const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
           if (docSnap.exists()) {
-              setHouseholdId(docSnap.data().activeHouseholdId || user.uid);
+              const householdId = docSnap.data().activeHouseholdId || user.uid;
+              console.log('[Household] Household ID loaded:', householdId);
+              setHouseholdId(householdId);
           } else {
+              console.log('[Household] Creating new household for user:', user.uid);
               setDoc(settingsRef, { activeHouseholdId: user.uid });
               setHouseholdId(user.uid);
           }
+      }, (error) => {
+          console.error('[Household] Error loading household settings:', error);
       });
       return () => unsubscribe();
   }, [user]);
@@ -334,10 +357,14 @@ export default function App() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const loadedInfants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      console.log('[Infants] Loaded infants:', loadedInfants.length, loadedInfants.map(i => i.name));
       setInfants(loadedInfants);
       if (loadedInfants.length > 0 && !selectedInfant) {
+        console.log('[Infants] Auto-selecting first infant:', loadedInfants[0].name);
         setSelectedInfant(loadedInfants[0]);
       }
+    }, (error) => {
+      console.error('[Infants] Error loading infants:', error);
     });
     return () => unsubscribe();
   }, [householdId]);
@@ -636,10 +663,12 @@ const TrackingTab = ({ householdId, infant }) => {
                 timestamp: Timestamp.fromDate(entryDate),
                 details: getDefaultDetails(type)
             };
+            console.log('[QuickAdd] Adding entry:', { type, infantId: targetInfantId, date: format(entryDate, 'yyyy-MM-dd HH:mm') });
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
+            console.log('[QuickAdd] Entry added successfully:', type);
             showToast(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
         } catch (error) {
-            console.error("Quick add failed", error);
+            console.error('[QuickAdd] Failed to add entry:', { type, error: error.message, stack: error.stack });
             alert("Failed to save entry. Please try again.");
         }
     };
@@ -922,21 +951,33 @@ const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantI
 
         try {
             if (existingEntry) {
+                console.log('[EntryModal] Updating entry:', { id: existingEntry.id, type, details });
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', existingEntry.id), entryData);
+                console.log('[EntryModal] Entry updated successfully');
             } else {
+                console.log('[EntryModal] Creating new entry:', { type, details });
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entryData);
+                console.log('[EntryModal] Entry created successfully');
             }
             onClose();
         } catch (e) {
-            console.error("Error saving", e);
+            console.error('[EntryModal] Error saving entry:', { type, error: e.message, stack: e.stack });
+            alert('Failed to save entry. Please try again.');
         }
     };
 
     const handleDelete = async () => {
         if (!existingEntry) return;
         if (confirm('Delete this entry?')) {
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', existingEntry.id));
-            onClose();
+            try {
+                console.log('[EntryModal] Deleting entry:', { id: existingEntry.id, type: existingEntry.type });
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', existingEntry.id));
+                console.log('[EntryModal] Entry deleted successfully');
+                onClose();
+            } catch (error) {
+                console.error('[EntryModal] Error deleting entry:', { id: existingEntry.id, error: error.message });
+                alert('Failed to delete entry. Please try again.');
+            }
         }
     };
 
@@ -1439,7 +1480,7 @@ const PumpingTab = ({ householdId }) => {
                     color="bg-purple-50 border-purple-100 text-purple-900" 
                 />
                 <SummaryCard 
-                    title={`Total (${period === 'all' ? 'All Time' : 'Last ' + period + ' Days'})`} 
+                    title={`Total (${period === 'all' ? 'All Time' : period === 'today' ? 'Today' : 'Last ' + period + ' Days'})`} 
                     data={stats.period} 
                     color="bg-blue-50 border-blue-100 text-blue-900" 
                 />
@@ -1485,7 +1526,7 @@ const PumpingTab = ({ householdId }) => {
 // --- TAB 3: SUMMARY (Refined) ---
 const SummaryTab = ({ householdId, infants, currentInfantId }) => {
     // Corrected householdId usage here
-    const [period, setPeriod] = useState(7); 
+    const [period, setPeriod] = useState('today'); 
     const [isCompare, setIsCompare] = useState(false);
     const [summaryData, setSummaryData] = useState([]);
     const [metrics, setMetrics] = useState({ pee: true, poop: true, bottle: true, breast: true, weight: false });
@@ -1520,11 +1561,14 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
 
             const dailyStats = {};
             
-            if (period !== 'all') {
+            if (period !== 'all' && period !== 'today') {
                 for(let i=0; i<=period; i++) {
                     const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
                     dailyStats[d] = { date: d }; 
                 }
+            } else if (period === 'today') {
+                const todayStr = format(new Date(), 'yyyy-MM-dd');
+                dailyStats[todayStr] = { date: todayStr };
             }
 
             filteredEntries.forEach(d => {
@@ -1612,6 +1656,78 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
     const activeMetrics = Object.keys(metrics).filter(m => metrics[m]);
     const activeInfants = isCompare ? infants : (infants.find(i => i.id === currentInfantId) ? [infants.find(i => i.id === currentInfantId)] : []);
 
+    const downloadSummaryCSV = async () => {
+        console.log('[Summary] Exporting summary as CSV');
+        
+        // Build CSV headers
+        let headers = ['Date'];
+        activeInfants.forEach(infant => {
+            headers.push(`${infant.name} - Pee Count`);
+            headers.push(`${infant.name} - Poop Count`);
+            headers.push(`${infant.name} - Bottle (ml)`);
+            headers.push(`${infant.name} - Breast (min)`);
+            headers.push(`${infant.name} - Weight (kg)`);
+            headers.push(`${infant.name} - Age (days)`);
+        });
+        
+        // Build CSV rows
+        const rows = summaryData.map(row => {
+            const rowData = [row.date];
+            activeInfants.forEach(infant => {
+                const prefix = isCompare ? `${infant.id}_` : '';
+                rowData.push(row[`${prefix}pee`] || 0);
+                rowData.push(row[`${prefix}poop`] || 0);
+                rowData.push(row[`${prefix}bottle`] || 0);
+                rowData.push(row[`${prefix}breast`] || 0);
+                rowData.push(row[`${prefix}weight`] || '');
+                rowData.push(row[`${infant.id}_age`] || '');
+            });
+            return rowData;
+        });
+        
+        // Create CSV content
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.join(','))
+        ].join('\n');
+        
+        // Log the export activity
+        try {
+            const periodLabel = period === 'all' ? 'All Time' : period === 'today' ? 'Today' : `Last ${period} Days`;
+            const infantNames = activeInfants.map(i => i.name).join(', ');
+            
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), {
+                householdId,
+                type: 'export',
+                timestamp: serverTimestamp(),
+                userId: auth.currentUser?.uid,
+                userEmail: auth.currentUser?.email,
+                details: {
+                    exportType: 'CSV',
+                    period: periodLabel,
+                    infants: infantNames,
+                    compareMode: isCompare,
+                    rowCount: rows.length,
+                    metrics: activeMetrics.join(', ')
+                }
+            });
+            console.log('[Summary] Export logged to activity');
+        } catch (error) {
+            console.error('[Summary] Failed to log export:', error);
+        }
+        
+        // Download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `summary_${format(new Date(), 'yyyyMMdd')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        console.log('[Summary] CSV export completed');
+    };
+
     // Empty State Check
     if (!summaryData || summaryData.length === 0) {
         return (
@@ -1625,12 +1741,13 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
         <div className="space-y-6">
             <div className="flex flex-col gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                         <select 
                             className="px-4 py-2 bg-slate-100 rounded-lg font-medium"
                             value={period}
-                            onChange={(e) => setPeriod(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                            onChange={(e) => setPeriod(e.target.value === 'all' ? 'all' : (e.target.value === 'today' ? 'today' : parseInt(e.target.value)))}
                         >
+                            <option value="today">Today</option>
                             <option value={7}>Last 7 Days</option>
                             <option value={30}>Last 30 Days</option>
                             <option value={90}>Last 3 Months</option>
@@ -1645,6 +1762,13 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
                                 <Users size={18} /> {isCompare ? 'Comparing' : 'Compare'}
                             </button>
                         )}
+                        
+                        <button 
+                            onClick={downloadSummaryCSV}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
+                        >
+                            <Download size={18} /> CSV
+                        </button>
                     </div>
 
                     <div className="flex gap-2 flex-wrap justify-center">
@@ -1765,6 +1889,74 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
     const [resetOldPass, setResetOldPass] = useState('');
     const [resetNewPass, setResetNewPass] = useState('');
     const [resetStatus, setResetStatus] = useState('');
+
+    // Activity Log State
+    const [activityLog, setActivityLog] = useState([]);
+    const [showActivityLog, setShowActivityLog] = useState(false);
+    const [activityPeriod, setActivityPeriod] = useState(7);
+
+    // Load activity log
+    useEffect(() => {
+        if (!householdId || !showActivityLog) return;
+
+        const startDate = startOfDay(subDays(new Date(), activityPeriod));
+        const q = query(
+            collection(db, 'artifacts', appId, 'public', 'data', 'entries'),
+            where('householdId', '==', householdId),
+            orderBy('timestamp', 'desc'),
+            limit(100)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const logs = snapshot.docs.map(doc => {
+                const data = doc.data();
+                const timestamp = getSafeDate(data.timestamp);
+                
+                if (timestamp < startDate) return null;
+
+                const infant = infants.find(i => i.id === data.infantId);
+                const infantName = data.infantId === 'mom' ? 'Mom' : (infant?.name || 'Unknown');
+                
+                let action = '';
+                switch(data.type) {
+                    case 'pee': action = 'logged a pee'; break;
+                    case 'poop': action = 'logged a poop'; break;
+                    case 'bottle': 
+                        const bottleVol = (data.details.breastMilk || 0) + (data.details.formula || 0);
+                        action = `logged bottle feeding (${bottleVol}ml)`;
+                        break;
+                    case 'breast':
+                        const breastDur = (data.details.leftTime || 0) + (data.details.rightTime || 0);
+                        action = `logged breastfeeding (${breastDur}min)`;
+                        break;
+                    case 'pump':
+                        action = `logged pumping (${data.details.totalVol || 0}ml)`;
+                        break;
+                    case 'weight':
+                        action = `logged weight (${data.details.value}kg)`;
+                        break;
+                    case 'height':
+                        action = `logged height (${data.details.value}cm)`;
+                        break;
+                    default: action = `logged ${data.type}`;
+                }
+
+                return {
+                    id: doc.id,
+                    timestamp,
+                    infantName,
+                    action,
+                    type: data.type
+                };
+            }).filter(Boolean);
+
+            setActivityLog(logs);
+        }, (error) => {
+            console.error('[ActivityLog] Error loading activity log:', error);
+        });
+
+        return () => unsubscribe();
+    }, [householdId, infants, showActivityLog, activityPeriod, appId]);
 
     // ... [Add/Edit/Delete Infant Functions - Unchanged] ...
     const addInfant = async () => {
@@ -2132,6 +2324,77 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
                         <FileText size={18}/> {exportingText ? 'Exporting...' : 'Export Text Log'}
                     </button>
                 </div>
+            </div>
+
+            {/* Activity Log Viewer */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                        <Clock size={20}/> Activity Log
+                    </h3>
+                    <button 
+                        onClick={() => setShowActivityLog(!showActivityLog)}
+                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                        {showActivityLog ? 'Hide' : 'Show'}
+                    </button>
+                </div>
+                
+                {showActivityLog && (
+                    <>
+                        <div className="mb-4">
+                            <select 
+                                value={activityPeriod}
+                                onChange={(e) => setActivityPeriod(parseInt(e.target.value))}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-pink-500"
+                            >
+                                <option value={1}>Last 24 hours</option>
+                                <option value={3}>Last 3 days</option>
+                                <option value={7}>Last 7 days</option>
+                                <option value={30}>Last 30 days</option>
+                            </select>
+                        </div>
+
+                        <div className="max-h-96 overflow-y-auto border border-slate-200 rounded-lg">
+                            {activityLog.length === 0 ? (
+                                <div className="p-8 text-center text-slate-400">
+                                    No activity in this period
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-slate-100">
+                                    {activityLog.map(log => (
+                                        <div key={log.id} className="p-3 hover:bg-slate-50 transition-colors">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="font-semibold text-slate-700 text-sm">
+                                                            {log.infantName}
+                                                        </span>
+                                                        <span className="text-slate-600 text-sm">
+                                                            {log.action}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-xs text-slate-400">
+                                                        {format(log.timestamp, 'MMM d, yyyy')} at {format(log.timestamp, 'h:mm a')}
+                                                    </div>
+                                                </div>
+                                                <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
+                                                    log.type === 'pee' ? 'bg-yellow-500' :
+                                                    log.type === 'poop' ? 'bg-orange-600' :
+                                                    log.type === 'bottle' ? 'bg-blue-600' :
+                                                    log.type === 'breast' ? 'bg-pink-500' :
+                                                    log.type === 'pump' ? 'bg-purple-600' :
+                                                    log.type === 'weight' ? 'bg-emerald-600' :
+                                                    'bg-slate-400'
+                                                }`} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
             </div>
 
             <button 
