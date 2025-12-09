@@ -830,11 +830,50 @@ const TrackingTab = ({ householdId, infant }) => {
 const MetricToggle = ({ label, active, onClick, color }) => (
     <button 
         onClick={onClick}
+        aria-pressed={active}
         className={`px-3 py-1.5 rounded-full text-sm font-bold transition-colors ${active ? color : 'bg-slate-100 text-slate-400'}`}
     >
         {label}
     </button>
 );
+
+const metricKeyFromDataKey = (dataKey) => {
+    if (!dataKey) return null;
+    if (dataKey.endsWith('_age')) return 'age';
+    const parts = dataKey.split('_');
+    return parts[parts.length - 1] || null;
+};
+
+const SummaryLegend = ({ payload = [], onToggleMetric, metrics }) => {
+    if (!payload.length) return null;
+
+    return (
+        <div className="flex flex-wrap gap-3 justify-center px-4 pb-2 text-xs font-semibold text-slate-500">
+            {payload.map((entry) => {
+                const metricKey = metricKeyFromDataKey(entry.dataKey);
+                const isManagedMetric = metricKey && Object.prototype.hasOwnProperty.call(metrics, metricKey);
+                const isActive = isManagedMetric ? metrics[metricKey] : true;
+                const label = entry.value || entry.payload?.name || entry.dataKey;
+
+                return (
+                    <button
+                        key={`${entry.dataKey}-${entry.color}`}
+                        type="button"
+                        onClick={() => isManagedMetric && onToggleMetric(metricKey)}
+                        disabled={!isManagedMetric}
+                        className={`flex items-center gap-2 rounded-full border px-3 py-1 transition ${isActive ? 'bg-white text-slate-700 border-slate-200' : 'bg-slate-100 text-slate-400 border-slate-100 line-through'}`}
+                    >
+                        <span
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: entry.color || entry.payload?.fill || '#94a3b8' }}
+                        />
+                        <span className="whitespace-nowrap">{label}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+};
 
 const ActionButton = ({ label, icon, color, onClick, onPlus }) => (
     <div className={`${color} rounded-xl shadow-md text-white relative group active:scale-95 transition-transform cursor-pointer`}>
@@ -1532,12 +1571,23 @@ const PumpingTab = ({ householdId }) => {
 
 
 // --- TAB 3: SUMMARY (Refined) ---
+const METRIC_KEYS = ['pee', 'poop', 'bottle', 'breast', 'weight'];
+const DEFAULT_SUMMARY_METRICS = {
+    pee: true,
+    poop: true,
+    bottle: true,
+    breast: true,
+    weight: false,
+    age: true,
+};
+const mergeMetricPrefs = (stored = {}) => ({ ...DEFAULT_SUMMARY_METRICS, ...stored });
+
 const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
     // Corrected householdId usage here
     const [period, setPeriod] = useState(7); 
     const [isCompare, setIsCompare] = useState(false);
     const [summaryData, setSummaryData] = useState([]);
-    const [metrics, setMetrics] = useState({ pee: true, poop: true, bottle: true, breast: true, weight: false });
+    const [metrics, setMetrics] = useState(() => ({ ...DEFAULT_SUMMARY_METRICS }));
     const [prefsLoaded, setPrefsLoaded] = useState(false);
 
     // Load saved preferences from Firestore
@@ -1549,7 +1599,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
             if (docSnap.exists() && docSnap.data().summaryPreferences) {
                 const prefs = docSnap.data().summaryPreferences;
                 if (prefs.period !== undefined) setPeriod(prefs.period);
-                if (prefs.metrics !== undefined) setMetrics(prefs.metrics);
+                if (prefs.metrics !== undefined) setMetrics(mergeMetricPrefs(prefs.metrics));
                 if (prefs.isCompare !== undefined) setIsCompare(prefs.isCompare);
             }
             setPrefsLoaded(true);
@@ -1693,13 +1743,32 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
             if(metrics.weight) renderList.push(<Bar key={`${infant.id}-weight`} dataKey={`${prefix}weight`} fill={colorSets.weight[colorIndex]} name={`Weight (kg)${suffix}`} />);
             
             // Render age as a line
-            renderList.push(<Line yAxisId="right" key={`${infant.id}-age`} type="monotone" dataKey={`${infant.id}_age`} stroke="#94a3b8" strokeDasharray="4 1" strokeWidth={2} dot={false} name={`Age (days)${suffix}`} />);
+            if (metrics.age) {
+                renderList.push(
+                    <Line 
+                        yAxisId="right" 
+                        key={`${infant.id}-age`} 
+                        type="monotone" 
+                        dataKey={`${infant.id}_age`} 
+                        stroke="#94a3b8" 
+                        strokeDasharray="4 1" 
+                        strokeWidth={2} 
+                        dot={false} 
+                        name={`Age (days)${suffix}`} 
+                    />
+                );
+            }
         });
         
         return renderList;
     };
 
-    const activeMetrics = Object.keys(metrics).filter(m => metrics[m]);
+    const handleLegendToggle = (metricKey) => {
+        if (!Object.prototype.hasOwnProperty.call(metrics, metricKey)) return;
+        setMetrics(prev => ({ ...prev, [metricKey]: !prev[metricKey] }));
+    };
+
+    const activeMetrics = METRIC_KEYS.filter(m => metrics[m]);
     const activeInfants = isCompare ? infants : (infants.find(i => i.id === currentInfantId) ? [infants.find(i => i.id === currentInfantId)] : []);
 
     const downloadSummaryCSV = async () => {
@@ -1739,7 +1808,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         
         // Log the export activity
         try {
-            const periodLabel = period === 'all' ? 'All Time' : period === 'today' ? 'Today' : `Last ${period} Days`;
+            const periodLabel = period === 'all' ? 'All Time' : `Last ${period} Days`;
             const infantNames = activeInfants.map(i => i.name).join(', ');
             
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), {
@@ -1817,11 +1886,11 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                     </div>
 
                     <div className="flex gap-2 flex-wrap justify-center">
-                        <MetricToggle label="Pee" active={metrics.pee} onClick={() => setMetrics({...metrics, pee: !metrics.pee})} color="bg-yellow-100 text-yellow-700" />
-                        <MetricToggle label="Poop" active={metrics.poop} onClick={() => setMetrics({...metrics, poop: !metrics.poop})} color="bg-orange-100 text-orange-700" />
-                        <MetricToggle label="Bottle" active={metrics.bottle} onClick={() => setMetrics({...metrics, bottle: !metrics.bottle})} color="bg-blue-100 text-blue-700" />
-                        <MetricToggle label="Breast" active={metrics.breast} onClick={() => setMetrics({...metrics, breast: !metrics.breast})} color="bg-pink-100 text-pink-700" />
-                        <MetricToggle label="Weight" active={metrics.weight} onClick={() => setMetrics({...metrics, weight: !metrics.weight})} color="bg-emerald-100 text-emerald-700" />
+                        <MetricToggle label="Pee" active={metrics.pee} onClick={() => setMetrics(prev => ({ ...prev, pee: !prev.pee }))} color="bg-yellow-100 text-yellow-700" />
+                        <MetricToggle label="Poop" active={metrics.poop} onClick={() => setMetrics(prev => ({ ...prev, poop: !prev.poop }))} color="bg-orange-100 text-orange-700" />
+                        <MetricToggle label="Bottle" active={metrics.bottle} onClick={() => setMetrics(prev => ({ ...prev, bottle: !prev.bottle }))} color="bg-blue-100 text-blue-700" />
+                        <MetricToggle label="Breast" active={metrics.breast} onClick={() => setMetrics(prev => ({ ...prev, breast: !prev.breast }))} color="bg-pink-100 text-pink-700" />
+                        <MetricToggle label="Weight" active={metrics.weight} onClick={() => setMetrics(prev => ({ ...prev, weight: !prev.weight }))} color="bg-emerald-100 text-emerald-700" />
                     </div>
                 </div>
             </div>
@@ -1834,7 +1903,13 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                         <YAxis />
                         <YAxis yAxisId="right" orientation="right" label={{ value: 'Age (Days)', angle: 90, position: 'insideRight' }} />
                         <Tooltip labelFormatter={t => format(parse(t, 'yyyy-MM-dd', new Date()), 'MMM d, yyyy')} />
-                        <Legend />
+                        <Legend content={(props) => (
+                            <SummaryLegend 
+                                {...props}
+                                metrics={metrics}
+                                onToggleMetric={handleLegendToggle}
+                            />
+                        )} />
                         {renderChartElements()}
                     </ComposedChart>
                 </ResponsiveContainer>
