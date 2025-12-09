@@ -1561,13 +1561,18 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
 
             const dailyStats = {};
             
-            if (period !== 'all' && period !== 'today') {
+            if (period === 'today') {
+                // Pre-fill today's date to ensure it shows even with no data
+                const todayStr = format(new Date(), 'yyyy-MM-dd');
+                dailyStats[todayStr] = { date: todayStr };
+            } else if (period !== 'all') {
+                // Pre-fill date range for specific periods
                 for(let i=0; i<=period; i++) {
                     const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
                     dailyStats[d] = { date: d }; 
                 }
             }
-            // For 'today' and 'all', don't pre-fill - let entries populate the data
+            // For 'all', don't pre-fill - let entries populate the data
 
             filteredEntries.forEach(d => {
                 if (!isCompare) {
@@ -1633,13 +1638,13 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
         const renderList = [];
         const activeInfants = isCompare ? infants : (infants.find(i => i.id === currentInfantId) ? [infants.find(i => i.id === currentInfantId)] : []);
         
-        // Color variations: first child gets lighter shade, second gets darker
+        // Color variations: first child gets lighter with transparency, second gets solid darker
         const colorSets = {
-            pee: ['#fde047', '#eab308'],      // yellow-300, yellow-500
-            poop: ['#fb923c', '#ea580c'],     // orange-400, orange-600
-            bottle: ['#60a5fa', '#2563eb'],   // blue-400, blue-600
-            breast: ['#f472b6', '#ec4899'],   // pink-400, pink-500
-            weight: ['#34d399', '#059669']    // emerald-400, emerald-600
+            pee: ['rgba(254, 240, 138, 0.7)', '#ca8a04'],      // yellow-200 70%, yellow-600
+            poop: ['rgba(254, 215, 170, 0.7)', '#c2410c'],     // orange-200 70%, orange-700
+            bottle: ['rgba(147, 197, 253, 0.7)', '#1d4ed8'],   // blue-300 70%, blue-700
+            breast: ['rgba(249, 168, 212, 0.7)', '#db2777'],   // pink-300 70%, pink-600
+            weight: ['rgba(110, 231, 183, 0.7)', '#047857']    // emerald-300 70%, emerald-700
         };
         
         activeInfants.forEach((infant, index) => {
@@ -1931,24 +1936,24 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
                     case 'pee': action = `logged a pee${infantName !== 'Unknown' ? ' for ' + infantName : ''}`; break;
                     case 'poop': action = `logged a poop${infantName !== 'Unknown' ? ' for ' + infantName : ''}`; break;
                     case 'bottle': 
-                        const bottleVol = (data.details.breastMilk || 0) + (data.details.formula || 0);
+                        const bottleVol = (data.details?.breastMilk || 0) + (data.details?.formula || 0);
                         action = `logged bottle feeding (${bottleVol}ml)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
                         break;
                     case 'breast':
-                        const breastDur = (data.details.leftTime || 0) + (data.details.rightTime || 0);
+                        const breastDur = (data.details?.leftTime || 0) + (data.details?.rightTime || 0);
                         action = `logged breastfeeding (${breastDur}min)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
                         break;
                     case 'pump':
-                        action = 'logged pumping (${data.details.totalVol || 0}ml)';
+                        action = `logged pumping (${data.details?.totalVol || 0}ml)`;
                         break;
                     case 'weight':
-                        action = `logged weight (${data.details.value}kg)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
+                        action = `logged weight (${data.details?.value}kg)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
                         break;
                     case 'height':
-                        action = `logged height (${data.details.value}cm)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
+                        action = `logged height (${data.details?.value}cm)${infantName !== 'Unknown' ? ' for ' + infantName : ''}`;
                         break;
                     case 'export':
-                        action = `exported ${data.details.exportType} (${data.details.period})`;
+                        action = `exported ${data.details?.exportType} (${data.details?.period})`;
                         break;
                     default: action = `logged ${data.type}`;
                 }
