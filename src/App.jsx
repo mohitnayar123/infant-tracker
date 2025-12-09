@@ -417,23 +417,21 @@ export default function App() {
         {currentTab === 'tracking' && selectedInfant && <TrackingTab householdId={householdId} infant={selectedInfant} />}
         {currentTab === 'history' && selectedInfant && <HistoryTab householdId={householdId} infant={selectedInfant} />}
         {currentTab === 'pumping' && <PumpingTab householdId={householdId} />}
-        {currentTab === 'summary' && <SummaryTab householdId={householdId} infants={infants} currentInfantId={selectedInfant?.id} />}
-        {currentTab === 'settings' && <SettingsTab user={user} householdId={householdId} infants={infants} appId={appId} />}
+        {currentTab === 'summary' && <SummaryTab householdId={householdId} infants={infants} currentInfantId={selectedInfant?.id} appId={appId} />}
+        {currentTab === 'settings' && <SettingsTab user={user} householdId={householdId} infants={infants} appId={appId} onTabChange={setCurrentTab} />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around p-2 md:hidden z-20 overflow-x-auto">
         <NavButton active={currentTab === 'tracking'} onClick={() => setCurrentTab('tracking')} icon={<Activity size={24} />} label="Track" />
-        <NavButton active={currentTab === 'history'} onClick={() => setCurrentTab('history')} icon={<Clock size={24} />} label="History" />
-        <NavButton active={currentTab === 'pumping'} onClick={() => setCurrentTab('pumping')} icon={<Milk size={24} />} label="Pump" />
         <NavButton active={currentTab === 'summary'} onClick={() => setCurrentTab('summary')} icon={<BarChart3 size={24} />} label="Summary" />
+        <NavButton active={currentTab === 'pumping'} onClick={() => setCurrentTab('pumping')} icon={<Milk size={24} />} label="Pump" />
         <NavButton active={currentTab === 'settings'} onClick={() => setCurrentTab('settings')} icon={<SettingsIcon size={24} />} label="Settings" />
       </nav>
 
       <div className="hidden md:flex justify-center gap-4 mb-4 fixed bottom-8 left-1/2 -translate-x-1/2 bg-white px-6 py-2 rounded-full shadow-lg border border-slate-200 z-20">
         <NavButton active={currentTab === 'tracking'} onClick={() => setCurrentTab('tracking')} icon={<Activity size={20} />} label="Tracking" />
-        <NavButton active={currentTab === 'history'} onClick={() => setCurrentTab('history')} icon={<Clock size={20} />} label="History" />
-        <NavButton active={currentTab === 'pumping'} onClick={() => setCurrentTab('pumping')} icon={<Milk size={20} />} label="Pumping" />
         <NavButton active={currentTab === 'summary'} onClick={() => setCurrentTab('summary')} icon={<BarChart3 size={20} />} label="Summary" />
+        <NavButton active={currentTab === 'pumping'} onClick={() => setCurrentTab('pumping')} icon={<Milk size={20} />} label="Pumping" />
         <NavButton active={currentTab === 'settings'} onClick={() => setCurrentTab('settings')} icon={<SettingsIcon size={20} />} label="Settings" />
       </div>
     </div>
@@ -1534,12 +1532,41 @@ const PumpingTab = ({ householdId }) => {
 
 
 // --- TAB 3: SUMMARY (Refined) ---
-const SummaryTab = ({ householdId, infants, currentInfantId }) => {
+const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
     // Corrected householdId usage here
     const [period, setPeriod] = useState(7); 
     const [isCompare, setIsCompare] = useState(false);
     const [summaryData, setSummaryData] = useState([]);
     const [metrics, setMetrics] = useState({ pee: true, poop: true, bottle: true, breast: true, weight: false });
+
+    // Load saved preferences from Firestore
+    useEffect(() => {
+        if (!auth.currentUser?.uid || !appId) return;
+        
+        const prefsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', auth.currentUser.uid);
+        const unsubscribe = onSnapshot(prefsRef, (docSnap) => {
+            if (docSnap.exists() && docSnap.data().summaryPreferences) {
+                const prefs = docSnap.data().summaryPreferences;
+                if (prefs.period !== undefined) setPeriod(prefs.period);
+                if (prefs.metrics !== undefined) setMetrics(prefs.metrics);
+                if (prefs.isCompare !== undefined) setIsCompare(prefs.isCompare);
+            }
+        });
+        
+        return () => unsubscribe();
+    }, [appId]);
+
+    // Save preferences to Firestore when they change
+    useEffect(() => {
+        if (!auth.currentUser?.uid || !appId) return;
+        
+        const prefsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', auth.currentUser.uid);
+        setDoc(prefsRef, {
+            summaryPreferences: { period, metrics, isCompare }
+        }, { merge: true }).catch(err => {
+            console.error('[Summary] Failed to save preferences:', err);
+        });
+    }, [period, metrics, isCompare, appId]);
 
     useEffect(() => {
         const endDate = endOfDay(new Date());
@@ -1889,7 +1916,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
 
 
 // --- TAB 4: SETTINGS (Added Join Household UI) ---
-const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
+const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange }) => {
     // ... [Previous logic]
     const [newInfantName, setNewInfantName] = useState('');
     const [dob, setDob] = useState('');
@@ -2325,6 +2352,19 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
                         </div>
                     ))}
                 </div>
+            </div>
+
+            {/* Historical Data Entry */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Clock size={20}/> Historical Data</h3>
+                <p className="text-sm text-slate-500 mb-4">Add entries for past dates using the grid view.</p>
+                <button
+                    onClick={() => onTabChange('history')}
+                    className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    <Clock size={18} />
+                    Add Historical Data
+                </button>
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
