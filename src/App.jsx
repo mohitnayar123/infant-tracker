@@ -1,5 +1,4 @@
-import { ChevronLeft, ChevronRight, Copy } from 'lucide-react';
-import { getDoc } from 'firebase/firestore';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
