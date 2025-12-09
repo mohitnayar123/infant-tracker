@@ -1490,7 +1490,7 @@ const PumpingTab = ({ householdId }) => {
                     color="bg-purple-50 border-purple-100 text-purple-900" 
                 />
                 <SummaryCard 
-                    title={`Total (${period === 'all' ? 'All Time' : period === 'today' ? 'Today' : 'Last ' + period + ' Days'})`} 
+                    title={`Total (${period === 'all' ? 'All Time' : 'Last ' + period + ' Days'})`} 
                     data={stats.period} 
                     color="bg-blue-50 border-blue-100 text-blue-900" 
                 />
@@ -1536,7 +1536,7 @@ const PumpingTab = ({ householdId }) => {
 // --- TAB 3: SUMMARY (Refined) ---
 const SummaryTab = ({ householdId, infants, currentInfantId }) => {
     // Corrected householdId usage here
-    const [period, setPeriod] = useState('today'); 
+    const [period, setPeriod] = useState(7); 
     const [isCompare, setIsCompare] = useState(false);
     const [summaryData, setSummaryData] = useState([]);
     const [metrics, setMetrics] = useState({ pee: true, poop: true, bottle: true, breast: true, weight: false });
@@ -1547,8 +1547,6 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
         
         if (period === 'all') {
             startDate = new Date(0); 
-        } else if (period === 'today') {
-            startDate = startOfDay(new Date());
         } else {
             startDate = startOfDay(subDays(new Date(), period));
         }
@@ -1573,18 +1571,12 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
 
             const dailyStats = {};
             
-            if (period === 'today') {
-                // Pre-fill today's date to ensure it shows even with no data
-                const todayStr = format(new Date(), 'yyyy-MM-dd');
-                dailyStats[todayStr] = { date: todayStr };
-            } else if (period !== 'all') {
-                // Pre-fill date range for specific periods
+            if (period !== 'all') {
                 for(let i=0; i<=period; i++) {
                     const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
                     dailyStats[d] = { date: d }; 
                 }
             }
-            // For 'all', don't pre-fill - let entries populate the data
 
             filteredEntries.forEach(d => {
                 if (!isCompare) {
@@ -1770,9 +1762,8 @@ const SummaryTab = ({ householdId, infants, currentInfantId }) => {
                         <select 
                             className="px-4 py-2 bg-slate-100 rounded-lg font-medium"
                             value={period}
-                            onChange={(e) => setPeriod(e.target.value === 'all' ? 'all' : (e.target.value === 'today' ? 'today' : parseInt(e.target.value)))}
+                            onChange={(e) => setPeriod(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
                         >
-                            <option value="today">Today</option>
                             <option value={7}>Last 7 Days</option>
                             <option value={30}>Last 30 Days</option>
                             <option value={90}>Last 3 Months</option>
