@@ -367,6 +367,7 @@ export default function App() {
 
         <div className="flex items-center gap-2">
             <select 
+                aria-label="Select infant to track"
                 className="bg-slate-100 border-none rounded-full px-4 py-1.5 text-sm font-medium focus:ring-2 focus:ring-pink-500"
                 value={selectedInfant?.id || ''}
                 onChange={(e) => setSelectedInfant(infants.find(i => i.id === e.target.value))}
@@ -376,6 +377,7 @@ export default function App() {
                 ))}
             </select>
             <button 
+                aria-label="Open settings"
                 onClick={() => setCurrentTab('settings')}
                 className="p-2 text-slate-500 hover:bg-slate-100 rounded-full"
             >
@@ -675,6 +677,15 @@ const TrackingTab = ({ householdId, infant }) => {
     );
 };
 
+const MetricToggle = ({ label, active, onClick, color }) => (
+    <button 
+        onClick={onClick}
+        className={`px-3 py-1.5 rounded-full text-sm font-bold transition-colors ${active ? color : 'bg-slate-100 text-slate-400'}`}
+    >
+        {label}
+    </button>
+);
+
 const ActionButton = ({ label, icon, color, onClick, onPlus }) => (
     <div className={`${color} rounded-xl shadow-md text-white relative group active:scale-95 transition-transform cursor-pointer`}>
         <button 
@@ -685,6 +696,7 @@ const ActionButton = ({ label, icon, color, onClick, onPlus }) => (
             <span className="font-bold text-sm">{label}</span>
         </button>
         <button 
+            aria-label={`Add ${label} with details`}
             className="absolute top-1 right-1 p-1 bg-white/20 hover:bg-white/40 rounded-full transition-colors z-10"
             onClick={(e) => {
                 e.stopPropagation();
@@ -2012,5 +2024,4 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId }) => {
         </div>
     );
 };
-
 
