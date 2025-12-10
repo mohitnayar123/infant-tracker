@@ -863,7 +863,7 @@ const SummaryLegend = ({ payload = [], onToggleMetric, metrics }) => {
     if (!payload.length) return null;
 
     return (
-        <div className="flex flex-wrap gap-3 justify-center px-4 pb-2 text-xs font-semibold text-slate-500">
+        <div className="flex flex-wrap gap-3 justify-center px-4 pb-2 text-xs font-semibold text-slate-500 max-h-20 overflow-y-auto">
             {payload.map((entry) => {
                 const metricKey = metricKeyFromDataKey(entry.dataKey);
                 const isManagedMetric = metricKey && Object.prototype.hasOwnProperty.call(metrics, metricKey);
@@ -1583,9 +1583,9 @@ const METRIC_KEYS = ['pee', 'poop', 'feedCount', 'bottleTotal', 'bottleFormula',
 const METRIC_LABELS = {
     pee: 'Pee',
     poop: 'Poop',
-    feedCount: 'Feeds',
+    feedCount: 'Total Feeds',
     bottleTotal: 'Bottle',
-    bottleFormula: 'Bottle(Formula)',
+    bottleFormula: 'Bottle (Formula)',
     bottlePumped: 'Bottle(Pumped)',
     breast: 'Breast',
     weight: 'Weight'
@@ -1802,9 +1802,9 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
             if(metrics.feedCount) renderList.push(<Bar key={`${infant.id}-feedCount`} dataKey={`${prefix}feedCount`} fill={colorSets.feedCount[colorIndex]} name={`Total Feeds${suffix}`}><LabelList dataKey={`${prefix}feedCount`} position="top" fontSize={10} /></Bar>);
             if(metrics.bottleTotal) renderList.push(<Bar key={`${infant.id}-bottleTotal`} dataKey={`${prefix}bottleTotal`} fill={colorSets.bottleTotal[colorIndex]} name={`Bottle${suffix}`}><LabelList dataKey={`${prefix}bottleTotal`} position="top" fontSize={10} /></Bar>);
             if(metrics.bottleFormula) renderList.push(<Bar key={`${infant.id}-bottleFormula`} dataKey={`${prefix}bottleFormula`} fill={colorSets.bottleFormula[colorIndex]} name={`Bottle (Formula)${suffix}`}><LabelList dataKey={`${prefix}bottleFormula`} position="top" fontSize={10} /></Bar>);
-            if(metrics.bottlePumped) renderList.push(<Bar key={`${infant.id}-bottlePumped`} dataKey={`${prefix}bottlePumped`} fill={colorSets.bottlePumped[colorIndex]} name={`Pumped (ml)${suffix}`}><LabelList dataKey={`${prefix}bottlePumped`} position="top" fontSize={10} /></Bar>);
-            if(metrics.breast) renderList.push(<Bar key={`${infant.id}-breast`} dataKey={`${prefix}breast`} fill={colorSets.breast[colorIndex]} name={`Breast (min)${suffix}`}><LabelList dataKey={`${prefix}breast`} position="top" fontSize={10} /></Bar>);
-            if(metrics.weight) renderList.push(<Bar key={`${infant.id}-weight`} dataKey={`${prefix}weight`} fill={colorSets.weight[colorIndex]} name={`Weight (kg)${suffix}`}><LabelList dataKey={`${prefix}weight`} position="top" fontSize={10} /></Bar>);
+            if(metrics.bottlePumped) renderList.push(<Bar key={`${infant.id}-bottlePumped`} dataKey={`${prefix}bottlePumped`} fill={colorSets.bottlePumped[colorIndex]} name={`Bottle(Pumped)${suffix}`}><LabelList dataKey={`${prefix}bottlePumped`} position="top" fontSize={10} /></Bar>);
+            if(metrics.breast) renderList.push(<Bar key={`${infant.id}-breast`} dataKey={`${prefix}breast`} fill={colorSets.breast[colorIndex]} name={`Breast${suffix}`}><LabelList dataKey={`${prefix}breast`} position="top" fontSize={10} /></Bar>);
+            if(metrics.weight) renderList.push(<Bar key={`${infant.id}-weight`} dataKey={`${prefix}weight`} fill={colorSets.weight[colorIndex]} name={`Weight${suffix}`}><LabelList dataKey={`${prefix}weight`} position="top" fontSize={10} /></Bar>);
             
             // Render age as a line
             if (metrics.age) {
@@ -1818,7 +1818,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                         strokeDasharray="4 1" 
                         strokeWidth={2} 
                         dot={false} 
-                        name={`Age (days)${suffix}`} 
+                        name={`Age${suffix}`} 
                     />
                 );
             }
@@ -1985,31 +1985,50 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                     <div className="flex gap-2 flex-wrap justify-center">
                         <MetricToggle label="Pee" active={metrics.pee} onClick={() => setMetrics(prev => ({ ...prev, pee: !prev.pee }))} color="bg-yellow-100 text-yellow-700" />
                         <MetricToggle label="Poop" active={metrics.poop} onClick={() => setMetrics(prev => ({ ...prev, poop: !prev.poop }))} color="bg-orange-100 text-orange-700" />
-                        <MetricToggle label="Feeds" active={metrics.feedCount} onClick={() => setMetrics(prev => ({ ...prev, feedCount: !prev.feedCount }))} color="bg-purple-100 text-purple-700" />
-                        <MetricToggle label="Bottle Total" active={metrics.bottleTotal} onClick={() => setMetrics(prev => ({ ...prev, bottleTotal: !prev.bottleTotal }))} color="bg-blue-100 text-blue-700" />
-                        <MetricToggle label="Formula" active={metrics.bottleFormula} onClick={() => setMetrics(prev => ({ ...prev, bottleFormula: !prev.bottleFormula }))} color="bg-blue-200 text-blue-800" />
-                        <MetricToggle label="Pumped" active={metrics.bottlePumped} onClick={() => setMetrics(prev => ({ ...prev, bottlePumped: !prev.bottlePumped }))} color="bg-indigo-100 text-indigo-700" />
+                        <MetricToggle label="Total Feeds" active={metrics.feedCount} onClick={() => setMetrics(prev => ({ ...prev, feedCount: !prev.feedCount }))} color="bg-purple-100 text-purple-700" />
+                        <MetricToggle label="Bottle" active={metrics.bottleTotal} onClick={() => setMetrics(prev => ({ ...prev, bottleTotal: !prev.bottleTotal }))} color="bg-blue-100 text-blue-700" />
+                        <MetricToggle label="Bottle (Formula)" active={metrics.bottleFormula} onClick={() => setMetrics(prev => ({ ...prev, bottleFormula: !prev.bottleFormula }))} color="bg-blue-200 text-blue-800" />
+                        <MetricToggle label="Bottle(Pumped)" active={metrics.bottlePumped} onClick={() => setMetrics(prev => ({ ...prev, bottlePumped: !prev.bottlePumped }))} color="bg-indigo-100 text-indigo-700" />
                         <MetricToggle label="Breast" active={metrics.breast} onClick={() => setMetrics(prev => ({ ...prev, breast: !prev.breast }))} color="bg-pink-100 text-pink-700" />
                         <MetricToggle label="Weight" active={metrics.weight} onClick={() => setMetrics(prev => ({ ...prev, weight: !prev.weight }))} color="bg-emerald-100 text-emerald-700" />
                     </div>
                 </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 h-96">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 h-[500px] md:h-96">
                 <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={summaryData}>
+                    <ComposedChart data={summaryData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="date" tickFormatter={t => format(parse(t, 'yyyy-MM-dd', new Date()), 'MMM d')} tick={{fontSize: 12}} />
-                        <YAxis />
-                        <YAxis yAxisId="right" orientation="right" label={{ value: 'Age (Days)', angle: 90, position: 'insideRight' }} />
-                        <Tooltip labelFormatter={t => format(parse(t, 'yyyy-MM-dd', new Date()), 'MMM d, yyyy')} />
-                        <Legend content={(props) => (
-                            <SummaryLegend 
-                                {...props}
-                                metrics={metrics}
-                                onToggleMetric={handleLegendToggle}
-                            />
-                        )} />
+                        <XAxis 
+                            dataKey="date" 
+                            tickFormatter={t => format(parse(t, 'yyyy-MM-dd', new Date()), 'MMM d')} 
+                            tick={{fontSize: 11}} 
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                        />
+                        <YAxis tick={{fontSize: 11}} width={40} />
+                        <YAxis 
+                            yAxisId="right" 
+                            orientation="right" 
+                            tick={{fontSize: 11}} 
+                            width={50}
+                            label={{ value: 'Age (Days)', angle: 90, position: 'insideRight', style: { fontSize: 11 } }} 
+                        />
+                        <Tooltip 
+                            labelFormatter={t => format(parse(t, 'yyyy-MM-dd', new Date()), 'MMM d, yyyy')} 
+                            contentStyle={{ fontSize: 12 }}
+                        />
+                        <Legend 
+                            content={(props) => (
+                                <SummaryLegend 
+                                    {...props}
+                                    metrics={metrics}
+                                    onToggleMetric={handleLegendToggle}
+                                />
+                            )}
+                            wrapperStyle={{ paddingTop: '10px' }}
+                        />
                         {renderChartElements()}
                     </ComposedChart>
                 </ResponsiveContainer>
