@@ -2,8 +2,11 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, 
-  signInWithEmailAndPassword,
+    initializeAuth,
+    browserLocalPersistence,
+    browserSessionPersistence,
+    inMemoryPersistence,
+    signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
@@ -76,14 +79,35 @@ import {
   Copy,
   RefreshCw,
   Key,
-  Link as LinkIcon
+    Link as LinkIcon,
+    Shield
 } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, isSameDay, addMinutes, parse, isValid, differenceInDays, differenceInMinutes, differenceInHours } from 'date-fns';
 
 // --- Firebase Initialization ---
 const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+const isSessionStorageAvailable = () => {
+    if (typeof window === 'undefined') return false;
+    try {
+        const key = '__session_test__';
+        window.sessionStorage.setItem(key, '1');
+        window.sessionStorage.removeItem(key);
+        return true;
+    } catch (error) {
+        console.warn('[Auth] sessionStorage unavailable, using resilient persistence.', error?.message);
+        return false;
+    }
+};
+
+const persistenceStack = [browserLocalPersistence, inMemoryPersistence];
+if (isSessionStorageAvailable()) {
+    persistenceStack.unshift(browserSessionPersistence);
+}
+
+const auth = initializeAuth(app, {
+    persistence: persistenceStack
+});
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
@@ -119,12 +143,12 @@ const LoginScreen = () => {
 
     try {
         if (isSignUp) {
-            console.log('[Auth] Starting sign up:', email);
+            console.log('[Auth] Starting sign up');
             if (!isStrongPassword(password)) {
                 throw new Error("Password must be 6+ chars with letters & numbers.");
             }
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            console.log('[Auth] User created successfully:', userCredential.user.uid);
+            console.log('[Auth] User created successfully');
             
             // Create Default Infant for new user
             console.log('[Auth] Creating default infant for new user');
@@ -141,12 +165,12 @@ const LoginScreen = () => {
             console.log('[Auth] Sign up completed successfully');
 
         } else {
-            console.log('[Auth] Starting sign in:', email);
+            console.log('[Auth] Starting sign in');
             await signInWithEmailAndPassword(auth, email, password);
             console.log('[Auth] Sign in successful');
         }
     } catch (err) {
-        console.error('[Auth] Authentication error:', { isSignUp, email, code: err.code, message: err.message });
+        console.error('[Auth] Authentication error:', { isSignUp, code: err.code, message: err.message });
         let msg = "Authentication failed.";
         if (err.code === 'auth/invalid-email') msg = "Invalid email address.";
         if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') msg = "Invalid email or password.";
@@ -166,7 +190,7 @@ const LoginScreen = () => {
           const provider = new GoogleAuthProvider();
           const result = await signInWithPopup(auth, provider);
           const user = result.user;
-          console.log('[Auth] Google sign in successful:', user.email);
+          console.log('[Auth] Google sign in successful');
 
           const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', user.uid);
           const settingsSnap = await getDoc(settingsRef);
@@ -201,13 +225,13 @@ const LoginScreen = () => {
           return;
       }
       try {
-          console.log('[Auth] Sending password reset email to:', email);
+          console.log('[Auth] Sending password reset email');
           await sendPasswordResetEmail(auth, email);
           console.log('[Auth] Password reset email sent successfully');
           setResetSent(true);
           setError(""); 
       } catch (err) {
-          console.error('[Auth] Password reset error:', { email, code: err.code, message: err.message });
+          console.error('[Auth] Password reset error:', { code: err.code, message: err.message });
           setError("Failed to send reset email. Check the address.");
       }
   };
@@ -316,7 +340,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
-        console.log('[Auth] User signed in:', { uid: currentUser.uid, email: currentUser.email });
+                console.log('[Auth] User signed in');
       } else {
         console.log('[Auth] User signed out');
       }
@@ -333,10 +357,10 @@ export default function App() {
       const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
           if (docSnap.exists()) {
               const householdId = docSnap.data().activeHouseholdId || user.uid;
-              console.log('[Household] Household ID loaded:', householdId);
+              console.log('[Household] Household ID loaded');
               setHouseholdId(householdId);
           } else {
-              console.log('[Household] Creating new household for user:', user.uid);
+              console.log('[Household] Creating new household for user');
               setDoc(settingsRef, { activeHouseholdId: user.uid });
               setHouseholdId(user.uid);
           }
@@ -357,10 +381,10 @@ export default function App() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const loadedInfants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      console.log('[Infants] Loaded infants:', loadedInfants.length, loadedInfants.map(i => i.name));
+            console.log('[Infants] Loaded infants:', loadedInfants.length);
       setInfants(loadedInfants);
       if (loadedInfants.length > 0 && !selectedInfant) {
-        console.log('[Infants] Auto-selecting first infant:', loadedInfants[0].name);
+                console.log('[Infants] Auto-selecting first infant');
         setSelectedInfant(loadedInfants[0]);
       }
     }, (error) => {
@@ -692,7 +716,7 @@ const TrackingTab = ({ householdId, infant }) => {
                 userEmail: auth.currentUser?.email,
                 details: getDefaultDetails(type)
             };
-            console.log('[QuickAdd] Adding entry:', { type, infantId: targetInfantId, date: format(entryDate, 'yyyy-MM-dd HH:mm') });
+            console.log('[QuickAdd] Adding entry:', type);
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
             console.log('[QuickAdd] Entry added successfully:', type);
             showToast(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
@@ -1021,11 +1045,11 @@ const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantI
 
         try {
             if (existingEntry) {
-                console.log('[EntryModal] Updating entry:', { id: existingEntry.id, type, details });
+                console.log('[EntryModal] Updating entry:', type);
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', existingEntry.id), entryData);
                 console.log('[EntryModal] Entry updated successfully');
             } else {
-                console.log('[EntryModal] Creating new entry:', { type, details });
+                console.log('[EntryModal] Creating new entry:', type);
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entryData);
                 console.log('[EntryModal] Entry created successfully');
             }
@@ -1040,12 +1064,12 @@ const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantI
         if (!existingEntry) return;
         if (confirm('Delete this entry?')) {
             try {
-                console.log('[EntryModal] Deleting entry:', { id: existingEntry.id, type: existingEntry.type });
+                console.log('[EntryModal] Deleting entry');
                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', existingEntry.id));
                 console.log('[EntryModal] Entry deleted successfully');
                 onClose();
             } catch (error) {
-                console.error('[EntryModal] Error deleting entry:', { id: existingEntry.id, error: error.message });
+                console.error('[EntryModal] Error deleting entry:', { error: error.message });
                 alert('Failed to delete entry. Please try again.');
             }
         }
@@ -2492,6 +2516,16 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
                 </div>
             </div>
 
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Shield size={20}/> Privacy & Safety</h3>
+                <p className="text-sm text-slate-600 mb-3">
+                    Infant Tracker is provided as-is. Use it at your own risk and continue following guidance from your healthcare providers.
+                </p>
+                <p className="text-sm text-slate-600">
+                    Export, download, or back up your household data regularly to avoid loss. You are responsible for safeguarding any data you store in the app.
+                </p>
+            </div>
+
             {/* Activity Log Viewer */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                 <div className="flex items-center justify-between mb-4">
@@ -2576,3 +2610,4 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
         </div>
     );
 };
+
