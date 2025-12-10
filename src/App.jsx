@@ -1566,14 +1566,18 @@ const PumpingTab = ({ householdId }) => {
 
 
 // --- TAB 3: SUMMARY (Refined) ---
-const METRIC_KEYS = ['pee', 'poop', 'bottle', 'breast', 'weight'];
+const METRIC_KEYS = ['pee', 'poop', 'feedCount', 'bottleTotal', 'bottleFormula', 'bottlePumped', 'breast', 'weight'];
 const DEFAULT_SUMMARY_METRICS = {
     pee: true,
     poop: true,
-    bottle: true,
+    feedCount: true,
+    bottleTotal: false,
+    bottleFormula: false,
+    bottlePumped: false,
     breast: true,
     weight: false,
     age: true,
+    tillCurrentTime: false,
 };
 const mergeMetricPrefs = (stored = {}) => ({ ...DEFAULT_SUMMARY_METRICS, ...stored });
 
@@ -1581,6 +1585,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
     // Corrected householdId usage here
     const [period, setPeriod] = useState(7); 
     const [isCompare, setIsCompare] = useState(false);
+    const [tillCurrentTime, setTillCurrentTime] = useState(false);
     const [summaryData, setSummaryData] = useState([]);
     const [metrics, setMetrics] = useState(() => ({ ...DEFAULT_SUMMARY_METRICS }));
     const [prefsLoaded, setPrefsLoaded] = useState(false);
@@ -1596,6 +1601,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                 if (prefs.period !== undefined) setPeriod(prefs.period);
                 if (prefs.metrics !== undefined) setMetrics(mergeMetricPrefs(prefs.metrics));
                 if (prefs.isCompare !== undefined) setIsCompare(prefs.isCompare);
+                if (prefs.tillCurrentTime !== undefined) setTillCurrentTime(prefs.tillCurrentTime);
             }
             setPrefsLoaded(true);
         });
@@ -1609,21 +1615,28 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         
         const prefsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', auth.currentUser.uid);
         setDoc(prefsRef, {
-            summaryPreferences: { period, metrics, isCompare }
+            summaryPreferences: { period, metrics, isCompare, tillCurrentTime }
         }, { merge: true }).catch(err => {
             // Silently handle error
         });
-    }, [period, metrics, isCompare, appId, prefsLoaded]);
+    }, [period, metrics, isCompare, tillCurrentTime, appId, prefsLoaded]);
 
     useEffect(() => {
-        const endDate = endOfDay(new Date());
+        const now = new Date();
+        const endDate = endOfDay(now);
         let startDate;
         
         if (period === 'all') {
             startDate = new Date(0); 
         } else {
-            startDate = startOfDay(subDays(new Date(), period));
+            startDate = startOfDay(subDays(now, period));
         }
+        
+        // Get current time of day for filtering
+        const currentTimeOfDay = tillCurrentTime ? {
+            hours: now.getHours(),
+            minutes: now.getMinutes()
+        } : null;
         
         // Use householdId passed from parent, NOT user.uid directly if sharing
         const q = query(
@@ -1637,7 +1650,20 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
             // Client-side Filter
             const filteredEntries = allEntries.filter(e => {
                 const date = getSafeDate(e.timestamp);
-                return date >= startDate && date <= endDate;
+                if (date < startDate || date > endDate) return false;
+                
+                // Apply time-of-day filter if tillCurrentTime is enabled
+                if (currentTimeOfDay) {
+                    const entryHours = date.getHours();
+                    const entryMinutes = date.getMinutes();
+                    const entryTimeInMinutes = entryHours * 60 + entryMinutes;
+                    const currentTimeInMinutes = currentTimeOfDay.hours * 60 + currentTimeOfDay.minutes;
+                    
+                    // Only include entries that occurred before or at the current time of day
+                    if (entryTimeInMinutes > currentTimeInMinutes) return false;
+                }
+                
+                return true;
             });
 
             // Sorting client-side
@@ -1647,7 +1673,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
             
             if (period !== 'all') {
                 for(let i=0; i<=period; i++) {
-                    const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
+                    const d = format(subDays(now, i), 'yyyy-MM-dd');
                     dailyStats[d] = { date: d }; 
                 }
             }
@@ -1671,7 +1697,21 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
 
                 if(d.type === 'pee') inc(`${prefix}pee`, 1);
                 if(d.type === 'poop') inc(`${prefix}poop`, 1);
-                if(d.type === 'bottle') inc(`${prefix}bottle`, (d.details.formula || 0) + (d.details.breastMilk || 0));
+                
+                // Track total feeds (bottle + breast)
+                if(d.type === 'bottle' || d.type === 'breast') inc(`${prefix}feedCount`, 1);
+                
+                // Track bottle feeds by type
+                if(d.type === 'bottle') {
+                    const formula = d.details.formula || 0;
+                    const pumped = d.details.breastMilk || 0;
+                    const total = formula + pumped;
+                    
+                    inc(`${prefix}bottleTotal`, total);
+                    inc(`${prefix}bottleFormula`, formula);
+                    inc(`${prefix}bottlePumped`, pumped);
+                }
+                
                 if(d.type === 'breast') inc(`${prefix}breast`, (d.details.leftTime || 0) + (d.details.rightTime || 0));
                 if(d.type === 'weight') dailyStats[dayKey][`${prefix}weight`] = d.details.value; 
             });
@@ -1699,7 +1739,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         });
 
         return () => unsubscribe();
-    }, [period, currentInfantId, isCompare, householdId, infants]);
+    }, [period, currentInfantId, isCompare, tillCurrentTime, householdId, infants]);
 
     const totals = useMemo(() => {
         const acc = {};
@@ -1718,11 +1758,14 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         
         // Color variations: first child gets lighter with transparency, second gets solid darker
         const colorSets = {
-            pee: ['rgba(254, 240, 138, 0.7)', '#ca8a04'],      // yellow-200 70%, yellow-600
-            poop: ['rgba(254, 215, 170, 0.7)', '#c2410c'],     // orange-200 70%, orange-700
-            bottle: ['rgba(147, 197, 253, 0.7)', '#1d4ed8'],   // blue-300 70%, blue-700
-            breast: ['rgba(249, 168, 212, 0.7)', '#db2777'],   // pink-300 70%, pink-600
-            weight: ['rgba(110, 231, 183, 0.7)', '#047857']    // emerald-300 70%, emerald-700
+            pee: ['rgba(254, 240, 138, 0.7)', '#ca8a04'],           // yellow-200 70%, yellow-600
+            poop: ['rgba(254, 215, 170, 0.7)', '#c2410c'],          // orange-200 70%, orange-700
+            feedCount: ['rgba(168, 85, 247, 0.7)', '#7c3aed'],      // purple-400 70%, purple-600
+            bottleTotal: ['rgba(147, 197, 253, 0.7)', '#1d4ed8'],   // blue-300 70%, blue-700
+            bottleFormula: ['rgba(96, 165, 250, 0.7)', '#1e40af'],  // blue-400 70%, blue-800
+            bottlePumped: ['rgba(165, 180, 252, 0.7)', '#4338ca'],  // indigo-300 70%, indigo-700
+            breast: ['rgba(249, 168, 212, 0.7)', '#db2777'],        // pink-300 70%, pink-600
+            weight: ['rgba(110, 231, 183, 0.7)', '#047857']         // emerald-300 70%, emerald-700
         };
         
         activeInfants.forEach((infant, index) => {
@@ -1733,7 +1776,10 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
             // Render bars for metrics with color variation
             if(metrics.pee) renderList.push(<Bar key={`${infant.id}-pee`} dataKey={`${prefix}pee`} fill={colorSets.pee[colorIndex]} name={`Pee${suffix}`} />);
             if(metrics.poop) renderList.push(<Bar key={`${infant.id}-poop`} dataKey={`${prefix}poop`} fill={colorSets.poop[colorIndex]} name={`Poop${suffix}`} />);
-            if(metrics.bottle) renderList.push(<Bar key={`${infant.id}-bottle`} dataKey={`${prefix}bottle`} fill={colorSets.bottle[colorIndex]} name={`Bottle (ml)${suffix}`} />);
+            if(metrics.feedCount) renderList.push(<Bar key={`${infant.id}-feedCount`} dataKey={`${prefix}feedCount`} fill={colorSets.feedCount[colorIndex]} name={`Total Feeds${suffix}`} />);
+            if(metrics.bottleTotal) renderList.push(<Bar key={`${infant.id}-bottleTotal`} dataKey={`${prefix}bottleTotal`} fill={colorSets.bottleTotal[colorIndex]} name={`Bottle (ml)${suffix}`} />);
+            if(metrics.bottleFormula) renderList.push(<Bar key={`${infant.id}-bottleFormula`} dataKey={`${prefix}bottleFormula`} fill={colorSets.bottleFormula[colorIndex]} name={`Formula (ml)${suffix}`} />);
+            if(metrics.bottlePumped) renderList.push(<Bar key={`${infant.id}-bottlePumped`} dataKey={`${prefix}bottlePumped`} fill={colorSets.bottlePumped[colorIndex]} name={`Pumped (ml)${suffix}`} />);
             if(metrics.breast) renderList.push(<Bar key={`${infant.id}-breast`} dataKey={`${prefix}breast`} fill={colorSets.breast[colorIndex]} name={`Breast (min)${suffix}`} />);
             if(metrics.weight) renderList.push(<Bar key={`${infant.id}-weight`} dataKey={`${prefix}weight`} fill={colorSets.weight[colorIndex]} name={`Weight (kg)${suffix}`} />);
             
@@ -1770,12 +1816,15 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         // Build CSV headers
         let headers = ['Date'];
         activeInfants.forEach(infant => {
-            headers.push(`${infant.name} - Pee Count`);
-            headers.push(`${infant.name} - Poop Count`);
-            headers.push(`${infant.name} - Bottle (ml)`);
-            headers.push(`${infant.name} - Breast (min)`);
-            headers.push(`${infant.name} - Weight (kg)`);
-            headers.push(`${infant.name} - Age (days)`);
+            if (metrics.pee) headers.push(`${infant.name} - Pee Count`);
+            if (metrics.poop) headers.push(`${infant.name} - Poop Count`);
+            if (metrics.feedCount) headers.push(`${infant.name} - Total Feeds`);
+            if (metrics.bottleTotal) headers.push(`${infant.name} - Bottle Total (ml)`);
+            if (metrics.bottleFormula) headers.push(`${infant.name} - Formula (ml)`);
+            if (metrics.bottlePumped) headers.push(`${infant.name} - Pumped (ml)`);
+            if (metrics.breast) headers.push(`${infant.name} - Breast (min)`);
+            if (metrics.weight) headers.push(`${infant.name} - Weight (kg)`);
+            if (metrics.age) headers.push(`${infant.name} - Age (days)`);
         });
         
         // Build CSV rows
@@ -1783,12 +1832,15 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
             const rowData = [row.date];
             activeInfants.forEach(infant => {
                 const prefix = isCompare ? `${infant.id}_` : '';
-                rowData.push(row[`${prefix}pee`] || 0);
-                rowData.push(row[`${prefix}poop`] || 0);
-                rowData.push(row[`${prefix}bottle`] || 0);
-                rowData.push(row[`${prefix}breast`] || 0);
-                rowData.push(row[`${prefix}weight`] || '');
-                rowData.push(row[`${infant.id}_age`] || '');
+                if (metrics.pee) rowData.push(row[`${prefix}pee`] || 0);
+                if (metrics.poop) rowData.push(row[`${prefix}poop`] || 0);
+                if (metrics.feedCount) rowData.push(row[`${prefix}feedCount`] || 0);
+                if (metrics.bottleTotal) rowData.push(row[`${prefix}bottleTotal`] || 0);
+                if (metrics.bottleFormula) rowData.push(row[`${prefix}bottleFormula`] || 0);
+                if (metrics.bottlePumped) rowData.push(row[`${prefix}bottlePumped`] || 0);
+                if (metrics.breast) rowData.push(row[`${prefix}breast`] || 0);
+                if (metrics.weight) rowData.push(row[`${prefix}weight`] || '');
+                if (metrics.age) rowData.push(row[`${infant.id}_age`] || '');
             });
             return rowData;
         });
@@ -1869,6 +1921,14 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                         )}
                         
                         <button 
+                            onClick={() => setTillCurrentTime(!tillCurrentTime)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors ${tillCurrentTime ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-500'}`}
+                            title={tillCurrentTime ? `Comparing till ${format(new Date(), 'h:mm a')}` : 'Compare full days'}
+                        >
+                            <Clock size={18} /> {tillCurrentTime ? 'Till Now' : 'Full Day'}
+                        </button>
+                        
+                        <button 
                             onClick={downloadSummaryCSV}
                             className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
                         >
@@ -1879,7 +1939,10 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                     <div className="flex gap-2 flex-wrap justify-center">
                         <MetricToggle label="Pee" active={metrics.pee} onClick={() => setMetrics(prev => ({ ...prev, pee: !prev.pee }))} color="bg-yellow-100 text-yellow-700" />
                         <MetricToggle label="Poop" active={metrics.poop} onClick={() => setMetrics(prev => ({ ...prev, poop: !prev.poop }))} color="bg-orange-100 text-orange-700" />
-                        <MetricToggle label="Bottle" active={metrics.bottle} onClick={() => setMetrics(prev => ({ ...prev, bottle: !prev.bottle }))} color="bg-blue-100 text-blue-700" />
+                        <MetricToggle label="Feeds" active={metrics.feedCount} onClick={() => setMetrics(prev => ({ ...prev, feedCount: !prev.feedCount }))} color="bg-purple-100 text-purple-700" />
+                        <MetricToggle label="Bottle Total" active={metrics.bottleTotal} onClick={() => setMetrics(prev => ({ ...prev, bottleTotal: !prev.bottleTotal }))} color="bg-blue-100 text-blue-700" />
+                        <MetricToggle label="Formula" active={metrics.bottleFormula} onClick={() => setMetrics(prev => ({ ...prev, bottleFormula: !prev.bottleFormula }))} color="bg-blue-200 text-blue-800" />
+                        <MetricToggle label="Pumped" active={metrics.bottlePumped} onClick={() => setMetrics(prev => ({ ...prev, bottlePumped: !prev.bottlePumped }))} color="bg-indigo-100 text-indigo-700" />
                         <MetricToggle label="Breast" active={metrics.breast} onClick={() => setMetrics(prev => ({ ...prev, breast: !prev.breast }))} color="bg-pink-100 text-pink-700" />
                         <MetricToggle label="Weight" active={metrics.weight} onClick={() => setMetrics(prev => ({ ...prev, weight: !prev.weight }))} color="bg-emerald-100 text-emerald-700" />
                     </div>
@@ -1936,7 +1999,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                                              let val = row[`${prefix}${metric}`];
                                              let display = val || '-';
                                              if (val) {
-                                                 if (metric === 'bottle') display = `${val} ml`;
+                                                 if (metric === 'bottleTotal' || metric === 'bottleFormula' || metric === 'bottlePumped') display = `${val} ml`;
                                                  if (metric === 'breast') display = `${val} min`;
                                                  if (metric === 'weight') display = `${val} kg`;
                                              }
@@ -1963,7 +2026,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
 
                                         let val = totals[`${prefix}${metric}`];
                                         let display = val || 0;
-                                        if (metric === 'bottle') display = `${display} ml`;
+                                        if (metric === 'bottleTotal' || metric === 'bottleFormula' || metric === 'bottlePumped') display = `${display} ml`;
                                         if (metric === 'breast') display = `${display} min`;
 
                                         return (
