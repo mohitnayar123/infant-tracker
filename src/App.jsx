@@ -375,20 +375,29 @@ export default function App() {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 w-full sm:w-auto">
-            {currentTab !== 'pumping' && (
+            {currentTab !== 'pumping' && currentTab !== 'settings' && currentTab !== 'help' && (
                 <InfantTileSelector 
                     infants={infants}
                     selectedId={selectedInfant?.id}
                     onSelect={handleInfantSelect}
                 />
             )}
-            <button 
-                aria-label="Open settings"
-                onClick={() => setCurrentTab('settings')}
-                className="self-start sm:self-auto p-2 text-slate-500 hover:bg-slate-100 rounded-full"
-            >
-                <SettingsIcon size={20} />
-            </button>
+            <div className="flex gap-2">
+                <button 
+                    aria-label="View app features and help"
+                    onClick={() => setCurrentTab('help')}
+                    className="self-start sm:self-auto p-2 text-slate-500 hover:bg-slate-100 rounded-full"
+                >
+                    <FileText size={20} />
+                </button>
+                <button 
+                    aria-label="Open settings"
+                    onClick={() => setCurrentTab('settings')}
+                    className="self-start sm:self-auto p-2 text-slate-500 hover:bg-slate-100 rounded-full"
+                >
+                    <SettingsIcon size={20} />
+                </button>
+            </div>
         </div>
       </header>
 
@@ -397,6 +406,7 @@ export default function App() {
         {currentTab === 'history' && selectedInfant && <HistoryTab householdId={householdId} infant={selectedInfant} />}
         {currentTab === 'pumping' && <PumpingTab householdId={householdId} />}
         {currentTab === 'summary' && <SummaryTab householdId={householdId} infants={infants} currentInfantId={selectedInfant?.id} appId={appId} />}
+        {currentTab === 'help' && <HelpTab />}
         {currentTab === 'settings' && <SettingsTab user={user} householdId={householdId} infants={infants} appId={appId} onTabChange={setCurrentTab} />}
       </main>
 
@@ -1133,6 +1143,7 @@ const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantI
                                 value={details.unit}
                                 onChange={(e) => setDetails({...details, unit: e.target.value})}
                                 className="border border-slate-300 rounded-lg px-3 py-2 bg-white"
+                                aria-label="Select unit of measurement"
                              >
                                  {type === 'weight' ? ['kg', 'lb'].map(u => <option key={u} value={u}>{u}</option>) : ['cm', 'in'].map(u => <option key={u} value={u}>{u}</option>)}
                              </select>
@@ -1508,6 +1519,7 @@ const PumpingTab = ({ householdId }) => {
                     className="px-4 py-2 bg-slate-100 rounded-lg font-medium text-sm"
                     value={period}
                     onChange={(e) => setPeriod(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                    aria-label="Select time period for pumping data"
                 >
                     <option value={7}>7 Days</option>
                     <option value={30}>30 Days</option>
@@ -1904,6 +1916,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                             className="px-4 py-2 bg-slate-100 rounded-lg font-medium"
                             value={period}
                             onChange={(e) => setPeriod(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                            aria-label="Select time period for summary data"
                         >
                             <option value={7}>Last 7 Days</option>
                             <option value={30}>Last 30 Days</option>
@@ -1926,6 +1939,19 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                             title={tillCurrentTime ? `Comparing till ${format(new Date(), 'h:mm a')}` : 'Compare full days'}
                         >
                             <Clock size={18} /> {tillCurrentTime ? 'Till Now' : 'Full Day'}
+                        </button>
+                        
+                        <button 
+                            onClick={() => {
+                                setMetrics({...DEFAULT_SUMMARY_METRICS});
+                                setPeriod(7);
+                                setIsCompare(false);
+                                setTillCurrentTime(false);
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                            title="Reset to default settings"
+                        >
+                            <RefreshCw size={18} /> Reset
                         </button>
                         
                         <button 
@@ -2040,6 +2066,174 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    );
+};
+
+
+// --- HELP TAB ---
+const HelpTab = () => {
+    return (
+        <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                <h2 className="text-2xl font-bold text-pink-600 mb-4 flex items-center gap-2">
+                    <FileText size={24} />
+                    App Features & Guide
+                </h2>
+                <p className="text-slate-600 mb-6">
+                    Welcome to Infant Tracker! Here's a comprehensive guide to all the features available in the app.
+                </p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <Activity size={20} className="text-pink-600" />
+                    Tracking Tab
+                </h3>
+                <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                        <span className="text-pink-500 font-bold">•</span>
+                        <span><strong>Quick Log:</strong> Tap any activity button to instantly log pee, poop, bottle, breast, or pump sessions.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-pink-500 font-bold">•</span>
+                        <span><strong>Detailed Entry:</strong> Use the + icon on each button to add specific details (volumes, times, colors).</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-pink-500 font-bold">•</span>
+                        <span><strong>KPI Dashboard:</strong> View today's totals for each activity type at a glance.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-pink-500 font-bold">•</span>
+                        <span><strong>Daily Log:</strong> See all activities logged today with timestamps. Tap any entry to edit or delete.</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <BarChart3 size={20} className="text-purple-600" />
+                    Summary Tab
+                </h3>
+                <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Time Periods:</strong> View data for last 7 days, 30 days, 3 months, or all time.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Compare Mode:</strong> Compare metrics across multiple infants side-by-side (if you have more than one infant).</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Till Current Time:</strong> Compare days up to the current time of day (e.g., if it's 2pm, compare all days from 12am-2pm).</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Metric Toggles:</strong> Show/hide specific metrics: Pee, Poop, Feeds, Bottle (Total/Formula/Pumped), Breast, Weight.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Reset Button:</strong> Quickly reset all settings to defaults.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>CSV Export:</strong> Download your data as a spreadsheet for external analysis.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Visual Chart:</strong> Interactive chart showing trends over time. Click legend items to toggle metrics on/off.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Data Table:</strong> Detailed day-by-day breakdown with totals row at bottom.</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <Milk size={20} className="text-purple-600" />
+                    Pumping Tab
+                </h3>
+                <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Mother's Tracker:</strong> Track pumping sessions separately from infant feeding.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Left/Right Tracking:</strong> Record volumes from each breast separately.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Summary Stats:</strong> View today's total and period totals with left/right breakdown.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-purple-500 font-bold">•</span>
+                        <span><strong>Volume Chart:</strong> Visualize pumping volumes over time.</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <SettingsIcon size={20} className="text-slate-600" />
+                    Settings Tab
+                </h3>
+                <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                        <span className="text-slate-500 font-bold">•</span>
+                        <span><strong>Infant Management:</strong> Add, edit, or delete infant profiles with names and dates of birth.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-slate-500 font-bold">•</span>
+                        <span><strong>Household Sharing:</strong> Share your household code with partners to sync data across devices.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-slate-500 font-bold">•</span>
+                        <span><strong>Join Household:</strong> Enter a partner's code to access their tracking data.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-slate-500 font-bold">•</span>
+                        <span><strong>Account Settings:</strong> Change your password or reset it via email.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-slate-500 font-bold">•</span>
+                        <span><strong>Activity Log:</strong> View all data entry activities with timestamps and user information.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-slate-500 font-bold">•</span>
+                        <span><strong>Export All Data:</strong> Download complete dataset as CSV for backup or analysis.</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div className="bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl border border-pink-200 p-6">
+                <h3 className="text-xl font-bold text-slate-800 mb-4">💡 Tips & Tricks</h3>
+                <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                        <span className="text-pink-500 font-bold">•</span>
+                        <span>All your preferences (metrics, time periods, compare mode) are automatically saved and restored when you log back in.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-pink-500 font-bold">•</span>
+                        <span>Click on any chart legend item to toggle that metric on/off in the visualization.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-pink-500 font-bold">•</span>
+                        <span>Use the infant selector at the top to quickly switch between babies when tracking.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-pink-500 font-bold">•</span>
+                        <span>Long press or tap any log entry to edit times or details after the fact.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-pink-500 font-bold">•</span>
+                        <span>Share your household code with caregivers so everyone can track and view the same data.</span>
+                    </li>
+                </ul>
             </div>
         </div>
     );
@@ -2537,6 +2731,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
                                 value={activityPeriod}
                                 onChange={(e) => setActivityPeriod(parseInt(e.target.value))}
                                 className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-pink-500"
+                                aria-label="Select activity log time period"
                             >
                                 <option value={1}>Last 24 hours</option>
                                 <option value={3}>Last 3 days</option>
