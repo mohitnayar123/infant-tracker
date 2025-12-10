@@ -375,11 +375,13 @@ export default function App() {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 w-full sm:w-auto">
-            <InfantTileSelector 
-                infants={infants}
-                selectedId={selectedInfant?.id}
-                onSelect={handleInfantSelect}
-            />
+            {currentTab !== 'pumping' && (
+                <InfantTileSelector 
+                    infants={infants}
+                    selectedId={selectedInfant?.id}
+                    onSelect={handleInfantSelect}
+                />
+            )}
             <button 
                 aria-label="Open settings"
                 onClick={() => setCurrentTab('settings')}
@@ -2102,6 +2104,8 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
                 dob: editDob ? Timestamp.fromDate(new Date(editDob)) : null
             });
             setEditingId(null);
+            setEditName('');
+            setEditDob('');
         } catch (e) {
             alert("Failed to update.");
         }
