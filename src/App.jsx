@@ -43,7 +43,8 @@ import {
   Tooltip, 
   Legend, 
   ResponsiveContainer,
-  ComposedChart
+  ComposedChart,
+  LabelList
 } from 'recharts';
 import { 
   Droplets, 
@@ -1579,6 +1580,16 @@ const PumpingTab = ({ householdId }) => {
 
 // --- TAB 3: SUMMARY (Refined) ---
 const METRIC_KEYS = ['pee', 'poop', 'feedCount', 'bottleTotal', 'bottleFormula', 'bottlePumped', 'breast', 'weight'];
+const METRIC_LABELS = {
+    pee: 'Pee',
+    poop: 'Poop',
+    feedCount: 'Feeds',
+    bottleTotal: 'Bottle',
+    bottleFormula: 'Bottle(Formula)',
+    bottlePumped: 'Bottle(Pumped)',
+    breast: 'Breast',
+    weight: 'Weight'
+};
 const DEFAULT_SUMMARY_METRICS = {
     pee: true,
     poop: true,
@@ -1786,14 +1797,14 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
             const colorIndex = index % 2; // Alternate between 0 and 1
 
             // Render bars for metrics with color variation
-            if(metrics.pee) renderList.push(<Bar key={`${infant.id}-pee`} dataKey={`${prefix}pee`} fill={colorSets.pee[colorIndex]} name={`Pee${suffix}`} />);
-            if(metrics.poop) renderList.push(<Bar key={`${infant.id}-poop`} dataKey={`${prefix}poop`} fill={colorSets.poop[colorIndex]} name={`Poop${suffix}`} />);
-            if(metrics.feedCount) renderList.push(<Bar key={`${infant.id}-feedCount`} dataKey={`${prefix}feedCount`} fill={colorSets.feedCount[colorIndex]} name={`Total Feeds${suffix}`} />);
-            if(metrics.bottleTotal) renderList.push(<Bar key={`${infant.id}-bottleTotal`} dataKey={`${prefix}bottleTotal`} fill={colorSets.bottleTotal[colorIndex]} name={`Bottle (ml)${suffix}`} />);
-            if(metrics.bottleFormula) renderList.push(<Bar key={`${infant.id}-bottleFormula`} dataKey={`${prefix}bottleFormula`} fill={colorSets.bottleFormula[colorIndex]} name={`Formula (ml)${suffix}`} />);
-            if(metrics.bottlePumped) renderList.push(<Bar key={`${infant.id}-bottlePumped`} dataKey={`${prefix}bottlePumped`} fill={colorSets.bottlePumped[colorIndex]} name={`Pumped (ml)${suffix}`} />);
-            if(metrics.breast) renderList.push(<Bar key={`${infant.id}-breast`} dataKey={`${prefix}breast`} fill={colorSets.breast[colorIndex]} name={`Breast (min)${suffix}`} />);
-            if(metrics.weight) renderList.push(<Bar key={`${infant.id}-weight`} dataKey={`${prefix}weight`} fill={colorSets.weight[colorIndex]} name={`Weight (kg)${suffix}`} />);
+            if(metrics.pee) renderList.push(<Bar key={`${infant.id}-pee`} dataKey={`${prefix}pee`} fill={colorSets.pee[colorIndex]} name={`Pee${suffix}`}><LabelList dataKey={`${prefix}pee`} position="top" fontSize={10} /></Bar>);
+            if(metrics.poop) renderList.push(<Bar key={`${infant.id}-poop`} dataKey={`${prefix}poop`} fill={colorSets.poop[colorIndex]} name={`Poop${suffix}`}><LabelList dataKey={`${prefix}poop`} position="top" fontSize={10} /></Bar>);
+            if(metrics.feedCount) renderList.push(<Bar key={`${infant.id}-feedCount`} dataKey={`${prefix}feedCount`} fill={colorSets.feedCount[colorIndex]} name={`Total Feeds${suffix}`}><LabelList dataKey={`${prefix}feedCount`} position="top" fontSize={10} /></Bar>);
+            if(metrics.bottleTotal) renderList.push(<Bar key={`${infant.id}-bottleTotal`} dataKey={`${prefix}bottleTotal`} fill={colorSets.bottleTotal[colorIndex]} name={`Bottle${suffix}`}><LabelList dataKey={`${prefix}bottleTotal`} position="top" fontSize={10} /></Bar>);
+            if(metrics.bottleFormula) renderList.push(<Bar key={`${infant.id}-bottleFormula`} dataKey={`${prefix}bottleFormula`} fill={colorSets.bottleFormula[colorIndex]} name={`Bottle (Formula)${suffix}`}><LabelList dataKey={`${prefix}bottleFormula`} position="top" fontSize={10} /></Bar>);
+            if(metrics.bottlePumped) renderList.push(<Bar key={`${infant.id}-bottlePumped`} dataKey={`${prefix}bottlePumped`} fill={colorSets.bottlePumped[colorIndex]} name={`Pumped (ml)${suffix}`}><LabelList dataKey={`${prefix}bottlePumped`} position="top" fontSize={10} /></Bar>);
+            if(metrics.breast) renderList.push(<Bar key={`${infant.id}-breast`} dataKey={`${prefix}breast`} fill={colorSets.breast[colorIndex]} name={`Breast (min)${suffix}`}><LabelList dataKey={`${prefix}breast`} position="top" fontSize={10} /></Bar>);
+            if(metrics.weight) renderList.push(<Bar key={`${infant.id}-weight`} dataKey={`${prefix}weight`} fill={colorSets.weight[colorIndex]} name={`Weight (kg)${suffix}`}><LabelList dataKey={`${prefix}weight`} position="top" fontSize={10} /></Bar>);
             
             // Render age as a line
             if (metrics.age) {
@@ -1933,13 +1944,21 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                             </button>
                         )}
                         
-                        <button 
-                            onClick={() => setTillCurrentTime(!tillCurrentTime)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors ${tillCurrentTime ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-500'}`}
-                            title={tillCurrentTime ? `Comparing till ${format(new Date(), 'h:mm a')}` : 'Compare full days'}
-                        >
-                            <Clock size={18} /> {tillCurrentTime ? 'Till Now' : 'Full Day'}
-                        </button>
+                        <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+                            <button 
+                                onClick={() => setTillCurrentTime(false)}
+                                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!tillCurrentTime ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Full Day
+                            </button>
+                            <button 
+                                onClick={() => setTillCurrentTime(true)}
+                                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tillCurrentTime ? 'bg-white text-cyan-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                title={`Compare till ${format(new Date(), 'h:mm a')}`}
+                            >
+                                Till Now
+                            </button>
+                        </div>
                         
                         <button 
                             onClick={() => {
@@ -1948,10 +1967,11 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                                 setIsCompare(false);
                                 setTillCurrentTime(false);
                             }}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                            className="p-2 rounded-lg font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
                             title="Reset to default settings"
+                            aria-label="Reset to default settings"
                         >
-                            <RefreshCw size={18} /> Reset
+                            <RefreshCw size={18} />
                         </button>
                         
                         <button 
@@ -2005,7 +2025,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                                     activeInfants.map((infant, index) => (
                                          <th key={`${metric}-${infant.id}`} className={`px-4 py-3 text-center border-b whitespace-nowrap min-w-[100px] border-r border-slate-100 ${index === activeInfants.length - 1 ? 'border-r-2 border-slate-200' : ''}`}>
                                             <div className="flex flex-col items-center">
-                                                <span className="text-[10px] opacity-60 font-normal tracking-wide">{metric}</span>
+                                                <span className="text-[10px] opacity-60 font-normal tracking-wide">{METRIC_LABELS[metric] || metric}</span>
                                                 <span className="text-slate-700 font-bold">{infant.name}</span>
                                             </div>
                                          </th>
@@ -2185,7 +2205,7 @@ const HelpTab = () => {
                 <ul className="space-y-2 text-slate-600">
                     <li className="flex items-start gap-2">
                         <span className="text-slate-500 font-bold">•</span>
-                        <span><strong>Infant Management:</strong> Add, edit, or delete infant profiles with names and dates of birth.</span>
+                        <span><strong>Infant Management:</strong> Add, edit, or delete infant profiles with names and dates of birth (dates are saved in your local timezone).</span>
                     </li>
                     <li className="flex items-start gap-2">
                         <span className="text-slate-500 font-bold">•</span>
@@ -2336,7 +2356,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'infants'), {
             householdId, // Uses active householdId
             name: newInfantName,
-            dob: dob ? Timestamp.fromDate(new Date(dob)) : serverTimestamp()
+            dob: dob ? Timestamp.fromDate(new Date(dob + 'T00:00:00')) : serverTimestamp()
         });
         setNewInfantName('');
         setDob('');
@@ -2358,7 +2378,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
         try {
             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'infants', id), {
                 name: editName,
-                dob: editDob ? Timestamp.fromDate(new Date(editDob)) : null
+                dob: editDob ? Timestamp.fromDate(new Date(editDob + 'T00:00:00')) : null
             });
             setEditingId(null);
             setEditName('');
