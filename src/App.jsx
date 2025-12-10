@@ -2,11 +2,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
-    initializeAuth,
-    browserLocalPersistence,
-    browserSessionPersistence,
-    inMemoryPersistence,
-    signInWithEmailAndPassword,
+  getAuth, 
+  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
@@ -79,35 +76,14 @@ import {
   Copy,
   RefreshCw,
   Key,
-    Link as LinkIcon,
-    Shield
+  Link as LinkIcon
 } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, isSameDay, addMinutes, parse, isValid, differenceInDays, differenceInMinutes, differenceInHours } from 'date-fns';
 
 // --- Firebase Initialization ---
 const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
-const isSessionStorageAvailable = () => {
-    if (typeof window === 'undefined') return false;
-    try {
-        const key = '__session_test__';
-        window.sessionStorage.setItem(key, '1');
-        window.sessionStorage.removeItem(key);
-        return true;
-    } catch (error) {
-        console.warn('[Auth] sessionStorage unavailable, using resilient persistence.', error?.message);
-        return false;
-    }
-};
-
-const persistenceStack = [browserLocalPersistence, inMemoryPersistence];
-if (isSessionStorageAvailable()) {
-    persistenceStack.unshift(browserSessionPersistence);
-}
-
-const auth = initializeAuth(app, {
-    persistence: persistenceStack
-});
+const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
@@ -143,15 +119,12 @@ const LoginScreen = () => {
 
     try {
         if (isSignUp) {
-            console.log('[Auth] Starting sign up');
             if (!isStrongPassword(password)) {
                 throw new Error("Password must be 6+ chars with letters & numbers.");
             }
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            console.log('[Auth] User created successfully');
             
             // Create Default Infant for new user
-            console.log('[Auth] Creating default infant for new user');
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'infants'), {
                 householdId: userCredential.user.uid,
                 name: 'Baby 1',
@@ -162,15 +135,11 @@ const LoginScreen = () => {
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', userCredential.user.uid), {
                 activeHouseholdId: userCredential.user.uid
             });
-            console.log('[Auth] Sign up completed successfully');
 
         } else {
-            console.log('[Auth] Starting sign in');
             await signInWithEmailAndPassword(auth, email, password);
-            console.log('[Auth] Sign in successful');
         }
     } catch (err) {
-        console.error('[Auth] Authentication error:', { isSignUp, code: err.code, message: err.message });
         let msg = "Authentication failed.";
         if (err.code === 'auth/invalid-email') msg = "Invalid email address.";
         if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') msg = "Invalid email or password.";
@@ -186,17 +155,14 @@ const LoginScreen = () => {
       setLoading(true);
       setError('');
       try {
-          console.log('[Auth] Starting Google sign in');
           const provider = new GoogleAuthProvider();
           const result = await signInWithPopup(auth, provider);
           const user = result.user;
-          console.log('[Auth] Google sign in successful');
 
           const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_settings', user.uid);
           const settingsSnap = await getDoc(settingsRef);
           
           if (!settingsSnap.exists()) {
-              console.log('[Auth] New Google user, creating default data');
               await setDoc(settingsRef, { activeHouseholdId: user.uid });
               const q = query(
                   collection(db, 'artifacts', appId, 'public', 'data', 'infants'),
@@ -204,7 +170,6 @@ const LoginScreen = () => {
               );
               const snapshot = await getDocs(q);
               if (snapshot.empty) {
-                  console.log('[Auth] Creating default infant for Google user');
                   await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'infants'), {
                       householdId: user.uid,
                       name: 'Baby 1',
@@ -213,7 +178,6 @@ const LoginScreen = () => {
               }
           }
       } catch (err) {
-          console.error('[Auth] Google sign-in error:', { code: err.code, message: err.message });
           setError("Google sign-in failed. Please try again.");
       }
       setLoading(false);
@@ -225,13 +189,10 @@ const LoginScreen = () => {
           return;
       }
       try {
-          console.log('[Auth] Sending password reset email');
           await sendPasswordResetEmail(auth, email);
-          console.log('[Auth] Password reset email sent successfully');
           setResetSent(true);
           setError(""); 
       } catch (err) {
-          console.error('[Auth] Password reset error:', { code: err.code, message: err.message });
           setError("Failed to send reset email. Check the address.");
       }
   };
@@ -339,11 +300,6 @@ export default function App() {
   
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-                console.log('[Auth] User signed in');
-      } else {
-        console.log('[Auth] User signed out');
-      }
       setUser(currentUser);
       if (!currentUser) setHouseholdId(null);
     });
@@ -357,15 +313,13 @@ export default function App() {
       const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
           if (docSnap.exists()) {
               const householdId = docSnap.data().activeHouseholdId || user.uid;
-              console.log('[Household] Household ID loaded');
               setHouseholdId(householdId);
           } else {
-              console.log('[Household] Creating new household for user');
               setDoc(settingsRef, { activeHouseholdId: user.uid });
               setHouseholdId(user.uid);
           }
       }, (error) => {
-          console.error('[Household] Error loading household settings:', error);
+          // Silently handle error
       });
       return () => unsubscribe();
   }, [user]);
@@ -381,14 +335,12 @@ export default function App() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const loadedInfants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            console.log('[Infants] Loaded infants:', loadedInfants.length);
       setInfants(loadedInfants);
       if (loadedInfants.length > 0 && !selectedInfant) {
-                console.log('[Infants] Auto-selecting first infant');
         setSelectedInfant(loadedInfants[0]);
       }
     }, (error) => {
-      console.error('[Infants] Error loading infants:', error);
+      // Silently handle error
     });
     return () => unsubscribe();
   }, [householdId]);
@@ -716,12 +668,9 @@ const TrackingTab = ({ householdId, infant }) => {
                 userEmail: auth.currentUser?.email,
                 details: getDefaultDetails(type)
             };
-            console.log('[QuickAdd] Adding entry:', type);
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entry);
-            console.log('[QuickAdd] Entry added successfully:', type);
             showToast(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
         } catch (error) {
-            console.error('[QuickAdd] Failed to add entry:', { type, error: error.message, stack: error.stack });
             alert("Failed to save entry. Please try again.");
         }
     };
@@ -1045,17 +994,12 @@ const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantI
 
         try {
             if (existingEntry) {
-                console.log('[EntryModal] Updating entry:', type);
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', existingEntry.id), entryData);
-                console.log('[EntryModal] Entry updated successfully');
             } else {
-                console.log('[EntryModal] Creating new entry:', type);
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'entries'), entryData);
-                console.log('[EntryModal] Entry created successfully');
             }
             onClose();
         } catch (e) {
-            console.error('[EntryModal] Error saving entry:', { type, error: e.message, stack: e.stack });
             alert('Failed to save entry. Please try again.');
         }
     };
@@ -1064,12 +1008,9 @@ const EntryModal = ({ isOpen, onClose, type, existingEntry, householdId, infantI
         if (!existingEntry) return;
         if (confirm('Delete this entry?')) {
             try {
-                console.log('[EntryModal] Deleting entry');
                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'entries', existingEntry.id));
-                console.log('[EntryModal] Entry deleted successfully');
                 onClose();
             } catch (error) {
-                console.error('[EntryModal] Error deleting entry:', { error: error.message });
                 alert('Failed to delete entry. Please try again.');
             }
         }
@@ -1357,7 +1298,6 @@ const HistoryTab = ({ householdId, infant }) => {
             await Promise.all(promises);
             setUnsavedChanges({}); 
         } catch (e) {
-            console.error("Error saving batch", e);
             alert("Failed to save changes.");
         } finally {
             setSaving(false);
@@ -1669,7 +1609,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         setDoc(prefsRef, {
             summaryPreferences: { period, metrics, isCompare }
         }, { merge: true }).catch(err => {
-            console.error('[Summary] Failed to save preferences:', err);
+            // Silently handle error
         });
     }, [period, metrics, isCompare, appId, prefsLoaded]);
 
@@ -1825,8 +1765,6 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
     const activeInfants = isCompare ? infants : (infants.find(i => i.id === currentInfantId) ? [infants.find(i => i.id === currentInfantId)] : []);
 
     const downloadSummaryCSV = async () => {
-        console.log('[Summary] Exporting summary as CSV');
-        
         // Build CSV headers
         let headers = ['Date'];
         activeInfants.forEach(infant => {
@@ -1879,9 +1817,8 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
                     metrics: activeMetrics.join(', ')
                 }
             });
-            console.log('[Summary] Export logged to activity');
         } catch (error) {
-            console.error('[Summary] Failed to log export:', error);
+            // Silently handle error
         }
         
         // Download
@@ -1893,7 +1830,7 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        console.log('[Summary] CSV export completed');
+    };
     };
 
     // Empty State Check
@@ -2129,7 +2066,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
 
             setActivityLog(logs);
         }, (error) => {
-            console.error('[ActivityLog] Error loading activity log:', error);
+            // Silently handle error
         });
 
         return () => unsubscribe();
@@ -2167,7 +2104,6 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
             });
             setEditingId(null);
         } catch (e) {
-            console.error("Update failed", e);
             alert("Failed to update.");
         }
     };
@@ -2177,7 +2113,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
             try {
                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'infants', id));
             } catch (e) {
-                console.error("Delete failed", e);
+                // Silently handle error
             }
         }
     };
@@ -2201,7 +2137,6 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
             setJoinStatus('Joined successfully!');
             setPartnerCode('');
         } catch (e) {
-            console.error("Join failed", e);
             setJoinStatus('Failed to join.');
         }
     };
@@ -2224,7 +2159,6 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
             setResetOldPass('');
             setResetNewPass('');
         } catch (e) {
-            console.error("Reset failed", e);
             if (e.code === 'auth/wrong-password') {
                 setResetStatus('Incorrect old password.');
             } else {
@@ -2265,7 +2199,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-        } catch (error) { console.error("Export failed", error); }
+        } catch (error) { /* Silently handle error */ }
     };
 
     const handleTextExport = async () => {
@@ -2343,7 +2277,7 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-        } catch (error) { console.error("Export failed", error); } finally { setExportingText(false); }
+        } catch (error) { /* Silently handle error */ } finally { setExportingText(false); }
     };
     
     // Copy Code Helper
@@ -2516,16 +2450,6 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
                 </div>
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Shield size={20}/> Privacy & Safety</h3>
-                <p className="text-sm text-slate-600 mb-3">
-                    Infant Tracker is provided as-is. Use it at your own risk and continue following guidance from your healthcare providers.
-                </p>
-                <p className="text-sm text-slate-600">
-                    Export, download, or back up your household data regularly to avoid loss. You are responsible for safeguarding any data you store in the app.
-                </p>
-            </div>
-
             {/* Activity Log Viewer */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                 <div className="flex items-center justify-between mb-4">
@@ -2598,6 +2522,35 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
                 )}
             </div>
 
+            {/* Privacy Policy Section */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                    <FileText size={20} className="text-blue-600"/> Privacy & Disclaimer
+                </h3>
+                <div className="space-y-3 text-sm text-slate-600">
+                    <p className="leading-relaxed">
+                        <strong className="text-slate-700">Use at Your Own Risk:</strong> This application is provided "as is" without any warranties. 
+                        By using this app, you acknowledge that you are solely responsible for any data you input, store, or share.
+                    </p>
+                    <p className="leading-relaxed">
+                        <strong className="text-slate-700">Data Privacy:</strong> Your data is stored securely in the cloud. 
+                        However, we recommend not sharing sensitive medical information. Always consult healthcare professionals 
+                        for medical advice and decisions.
+                    </p>
+                    <p className="leading-relaxed">
+                        <strong className="text-slate-700">Sharing Household Data:</strong> When you share your household code 
+                        with others, they will have full access to view and modify all data within your household. Only share 
+                        your code with trusted individuals.
+                    </p>
+                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-xs text-amber-800 font-medium">
+                            ⚠️ By continuing to use this application, you agree to these terms and acknowledge that you use 
+                            this service at your own risk.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             <button 
                 onClick={() => {
                     signOut(auth);
@@ -2610,4 +2563,3 @@ const SettingsTab = ({ user, householdId, infants, onLogout, appId, onTabChange 
         </div>
     );
 };
-
