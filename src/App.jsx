@@ -1831,7 +1831,6 @@ const SummaryTab = ({ householdId, infants, currentInfantId, appId }) => {
         link.click();
         document.body.removeChild(link);
     };
-    };
 
     // Empty State Check
     if (!summaryData || summaryData.length === 0) {
